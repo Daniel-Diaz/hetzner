@@ -1,3 +1,4 @@
+---------------------------------------------------------------------------------------------------
 
 -- | Hetzner Cloud API client.
 --
@@ -7,19 +8,18 @@ module Hetzner
     Token (..)
     -- * Errors
   , ErrorCode (..)
+  , Error (..)
     ) where
 
 -- base
 import Data.Foldable (find)
-import Data.Char (isUpper, isLower)
+import Data.Char (isUpper, toLower)
 -- text
 import Data.Text (Text)
 import Data.Text qualified as Text
 -- aeson
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON, ToJSON, (.:), (.=))
 import Data.Aeson qualified as JSON
-
----------------------------------------------------------------------------------------------------
 
 -- | A token used to authenticate requests.
 --
@@ -67,13 +67,28 @@ data ErrorCode =
 
 instance FromJSON ErrorCode where
   parseJSON = JSON.withText "ErrorCode" $ \t ->
-    let c = Text.concat $ Text.split ((==) '_') $ Text.toTitle t
+    let c = Text.concat $ fmap Text.toTitle $ Text.split ((==) '_') t
     in  case find ((==) c . Text.pack . show) [Forbidden ..] of
           Just ec -> pure ec
           _ -> fail $ "Unknown error code: " ++ Text.unpack c
 
 instance ToJSON ErrorCode where
-  toJSON = JSON.toJSON . Text.toLower . Text.tail . Text.concatMap f . Text.pack . show
+  toJSON = JSON.toJSON . Text.tail . Text.concatMap f . Text.pack . show
     where
       f :: Char -> Text
-      f c = if isUpper c then Text.pack ['_',c] else Text.singleton c
+      f c = if isUpper c then Text.pack ['_', toLower c] else Text.singleton c
+
+-- | An error returned by Hetzner.
+data Error = Error
+  { -- | Error code.
+    errorCode :: ErrorCode
+    -- | Error message.
+  , errorMessage :: Text
+    } deriving Show
+
+instance FromJSON Error where
+  parseJSON = JSON.withObject "Error" $ \o ->
+    Error <$> o .: "code" <*> o .: "message"
+
+instance ToJSON Error where
+  toJSON err = JSON.object [ "code" .= errorCode err, "message" .= errorMessage err ]

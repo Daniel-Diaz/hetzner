@@ -8,4 +8,5 @@ library
   hs-source-dirs: src
   exposed-modules: Hetzner
   extensions: ImportQualifiedPost, OverloadedStrings
+  ghc-options: -Wall
   build-depends: base, text, aeson
