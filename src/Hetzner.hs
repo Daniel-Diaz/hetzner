@@ -2,13 +2,18 @@
 
 -- | Hetzner Cloud API client.
 --
---   Official documentation at https://docs.hetzner.cloud.
+--   More information can be found on the
+--   [official documentation](https://docs.hetzner.cloud).
 module Hetzner
   ( -- * Token
     Token (..)
     -- * Errors
   , ErrorCode (..)
   , Error (..)
+    -- * Labels
+  , LabelKey (..)
+  , Label (..)
+  , LabelSelector (..)
     ) where
 
 -- base
@@ -92,3 +97,51 @@ instance FromJSON Error where
 
 instance ToJSON Error where
   toJSON err = JSON.object [ "code" .= errorCode err, "message" .= errorMessage err ]
+
+-- | Label key.
+data LabelKey = LabelKey
+  { -- | Optional prefix. If specified, the prefix must be a DNS subdomain.
+    labelKeyPrefix :: Maybe Text
+    -- | Key name.
+  , labelKeyName :: Text
+    }
+
+-- | Labels are key-value pairs that can be attached to all resources.
+data Label = Label
+  { labelKey :: LabelKey
+  , labelValue :: Text
+    }
+
+-- | Label selectors can be used to filter results.
+data LabelSelector =
+    -- | Select when label is equal.
+    LabelEqual Label
+    -- | Select when label is not equal.
+  | LabelNotEqual Label
+    -- | Select when key is present.
+  | KeyPresent LabelKey
+    -- | Select when key is not present.
+  | KeyNotPresent LabelKey
+    -- | Select when label has one of the values.
+  | KeyValueIn LabelKey [Text]
+    -- | Select when label has none of the values.
+  | KeyValueNotIn LabelKey [Text]
+    -- | Select only when all selectors succeed.
+  | LabelAll [LabelSelector]
+
+-- | Semigroup under /\"and\"/ operation.
+instance Semigroup LabelSelector where
+  LabelAll xs <> LabelAll ys = LabelAll (xs ++ ys)
+  LabelAll xs <> s =
+    case xs of
+      [] -> s
+      _  -> LabelAll (xs ++ [s])
+  s <> LabelAll xs =
+    case xs of
+      [] -> s
+      _  -> LabelAll (s : xs)
+  s <> s' = LabelAll [s,s']
+
+-- | Neutral element is a selector that always succeeds.
+instance Monoid LabelSelector where
+  mempty = LabelAll []
