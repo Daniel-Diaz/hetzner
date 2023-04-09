@@ -14,6 +14,8 @@ module Hetzner
   , LabelKey (..)
   , Label (..)
   , LabelSelector (..)
+    -- * Pagination
+  , Pagination (..)
     ) where
 
 -- base
@@ -23,7 +25,7 @@ import Data.Char (isUpper, toLower)
 import Data.Text (Text)
 import Data.Text qualified as Text
 -- aeson
-import Data.Aeson (FromJSON, ToJSON, (.:), (.=))
+import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as JSON
 
 -- | A token used to authenticate requests.
@@ -145,3 +147,22 @@ instance Semigroup LabelSelector where
 -- | Neutral element is a selector that always succeeds.
 instance Monoid LabelSelector where
   mempty = LabelAll []
+
+-- | Pagination information.
+data Pagination = Pagination
+  { currentPage :: Int
+  , itemsPerPage :: Int
+  , previousPage :: Maybe Int
+  , nextPage :: Maybe Int
+  , lastPage :: Maybe Int
+  , totalEntries :: Maybe Int
+    }
+
+instance FromJSON Pagination where
+  parseJSON = JSON.withObject "Pagination" $ \o -> Pagination
+    <$> o .:  "page"
+    <*> o .:  "per_page"
+    <*> o .:? "previous_page"
+    <*> o .:? "next_page"
+    <*> o .:? "last_page"
+    <*> o .:? "total_entries"
