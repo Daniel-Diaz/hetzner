@@ -1,8 +1,12 @@
 name: hetzner
+synopsis: Hetzner Cloud client library.
 description: Hetzner Cloud client library.
 version: 0.1.0.0
 cabal-version: >= 1.2
 build-type: Simple
+author: Daniel Casanueva (daniel.casanueva `at` proton.me)
+maintainer: Daniel Casanueva (daniel.casanueva `at` proton.me)
+bug-reports: https://github.com/Daniel-Diaz/hetzner/issues
 
 library
   hs-source-dirs: src
