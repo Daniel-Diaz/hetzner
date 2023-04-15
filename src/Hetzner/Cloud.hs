@@ -4,12 +4,19 @@
 --
 --   More information can be found on the
 --   [official documentation](https://docs.hetzner.cloud).
+--
+--   Although not necessary, this module was designed with
+--   qualified imports in mind. For example:
+--
+-- > import qualified Hetzner.Cloud as Hetzner
+--
 module Hetzner.Cloud
   ( -- * Token
     Token (..)
     -- * Errors
   , ErrorCode (..)
   , Error (..)
+  , CloudException (..)
     -- * Labels
   , LabelKey (..)
   , Label (..)
@@ -22,6 +29,12 @@ module Hetzner.Cloud
   , ServerID
   , Metadata (..)
   , getMetadata
+    -- * Actions
+  , ActionStatus (..)
+    -- * Generic query
+  , cloudQuery
+  , WithKey (..)
+  , WithMeta (..)
     ) where
 
 -- Internal imports
@@ -30,6 +43,10 @@ import Hetzner.Cloud.Internal (parseIP)
 -- base
 import Data.Foldable (find)
 import Data.Char (isUpper, toLower)
+import Control.Exception (Exception, throwIO)
+import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
+import Data.Proxy
+import Data.String (fromString)
 -- network
 import Network.Socket (HostAddress)
 -- bytestring
@@ -48,7 +65,7 @@ import Network.HTTP.Simple qualified as HTTP
 -- | A token used to authenticate requests.
 --
 --   You can obtain one through the [Hetzner Cloud Console](https://console.hetzner.cloud).
-newtype Token = Token Text
+newtype Token = Token ByteString
 
 -- | Error codes that can be received when a request returns an error.
 --
@@ -173,7 +190,7 @@ data Pagination = Pagination
   , nextPage :: Maybe Int
   , lastPage :: Maybe Int
   , totalEntries :: Maybe Int
-    }
+    } deriving Show
 
 instance FromJSON Pagination where
   parseJSON = JSON.withObject "Pagination" $ \o -> Pagination
@@ -212,14 +229,14 @@ instance ToJSON Region where
 -- | Metadata that any server in the Hetzner cloud can discover
 --   about itself.
 data Metadata = Metadata
-  { -- | Server hostname.
-    metadataHostname :: Text
+  { -- | Server name.
+    metadataName :: Text
     -- | ID of the server.
   , metadataServerID :: ServerID
     -- | Primary public IPv4 address.
   , metadataPublicIPv4 :: HostAddress
-    -- | Availability zone.
-  , metadataZone :: Text
+    -- | Datacenter.
+  , metadataDatacenter :: Text
     -- | Network zone.
   , metadataRegion :: Region
     } deriving Show
@@ -239,7 +256,7 @@ instance FromJSON Metadata where
 -- | Generic metadata query.
 metadataQuery
   :: FromJSON a
-  => ByteString
+  => ByteString -- ^ Path
   -> IO a
 metadataQuery path =
   let req = HTTP.setRequestMethod "GET"
@@ -253,3 +270,73 @@ metadataQuery path =
 -- | Obtain metadata from running server.
 getMetadata :: IO Metadata
 getMetadata = metadataQuery mempty
+
+-- | Exception produced while performing a query to Hetzner Cloud.
+data CloudException =
+    CloudError Error
+  | JSONError (HTTP.Response ByteString) String
+    deriving Show
+
+instance Exception CloudException
+
+-- | Generic Hetzner Cloud query.
+--
+--   This function is used to implement Hetzner Cloud queries.
+--
+--   If there is any issue while performing the request, a
+--   'CloudException' will be thrown.
+--
+cloudQuery
+  :: FromJSON a
+  => ByteString -- ^ Path
+  -> ByteString -- ^ Method
+  -> Token
+  -> IO a
+cloudQuery path method (Token token) = do
+  let req = HTTP.setRequestMethod method
+          $ HTTP.setRequestSecure True
+          $ HTTP.setRequestHost "api.hetzner.cloud"
+          $ HTTP.setRequestPort 443
+          $ HTTP.setRequestPath ("/v1" <> path)
+          $ HTTP.addRequestHeader "Authorization" ("Bearer " <> token)
+          $ HTTP.defaultRequest
+  resp <- HTTP.httpBS req
+  let body = HTTP.getResponseBody resp
+  case div (HTTP.getResponseStatusCode resp) 100 of
+    2 -> case JSON.eitherDecodeStrict body of
+           Left err -> throwIO $ JSONError resp err
+           Right x -> pure x
+    _ -> case JSON.eitherDecodeStrict body of
+           Left err -> throwIO $ JSONError resp err
+           Right x -> throwIO $ CloudError x
+
+-- | Wrap a value with the key of the value within a JSON object.
+data WithKey (key :: Symbol) a = WithKey { withoutKey :: a } deriving Show
+
+instance (KnownSymbol key, FromJSON a) => FromJSON (WithKey key a) where
+  parseJSON =
+    let key = symbolVal (Proxy :: Proxy key)
+    in  JSON.withObject ("WithKey " ++ key) $ \o ->
+          WithKey <$> o .: fromString key
+
+-- | A value together with response metadata.
+data WithMeta a = WithMeta
+  { -- | Response metadata.
+    responseMeta :: ResponseMeta
+    -- | The value alone, without the metadata.
+  , withoutMeta :: a
+    } deriving Show
+
+instance Functor WithMeta where
+  fmap f x = x { withoutMeta = f $ withoutMeta x }
+
+data ResponseMeta = ResponseMeta
+  { pagination :: Pagination
+    } deriving Show
+
+---------------------------------------------------------------------------------------------------
+-- Actions
+---------------------------------------------------------------------------------------------------
+
+-- | Status of an action.
+data ActionStatus = ActionRunning | ActionSuccess | ActionError

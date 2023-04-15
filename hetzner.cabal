@@ -7,7 +7,12 @@ build-type: Simple
 library
   hs-source-dirs: src
   exposed-modules: Hetzner.Cloud, Hetzner.Cloud.Internal
-  extensions: ImportQualifiedPost, OverloadedStrings
+  extensions:
+      ImportQualifiedPost
+    , OverloadedStrings
+    , KindSignatures
+    , DataKinds
+    , ScopedTypeVariables
   ghc-options: -Wall
   build-depends:
       base, text, aeson, network, megaparsec
