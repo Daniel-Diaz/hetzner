@@ -13,7 +13,9 @@ library
     , KindSignatures
     , DataKinds
     , ScopedTypeVariables
+    , GeneralizedNewtypeDeriving
+    , TypeApplications
   ghc-options: -Wall
   build-depends:
       base, text, aeson, network, megaparsec
-    , http-conduit, bytestring, yaml
+    , http-conduit, bytestring, yaml, time

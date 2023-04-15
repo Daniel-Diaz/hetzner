@@ -14,7 +14,6 @@ module Hetzner.Cloud
   ( -- * Token
     Token (..)
     -- * Errors
-  , ErrorCode (..)
   , Error (..)
   , CloudException (..)
     -- * Labels
@@ -23,26 +22,31 @@ module Hetzner.Cloud
   , LabelSelector (..)
     -- * Regions
   , Region (..)
-    -- * Pagination
-  , Pagination (..)
     -- * Server metadata
-  , ServerID
+  , ServerID (..)
   , Metadata (..)
   , getMetadata
     -- * Actions
   , ActionStatus (..)
+  , ActionCommand (..)
+  , ActionID (..)
+  , Action (..)
+  , getActions
+  , getAction
     -- * Generic query
   , cloudQuery
   , WithKey (..)
   , WithMeta (..)
+    -- * Response metadata
+  , ResponseMeta (..)
+    -- ** Pagination
+  , Pagination (..)
     ) where
 
 -- Internal imports
 import Hetzner.Cloud.Internal (parseIP)
 
 -- base
-import Data.Foldable (find)
-import Data.Char (isUpper, toLower)
 import Control.Exception (Exception, throwIO)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
@@ -59,70 +63,20 @@ import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as JSON
 -- yaml
 import Data.Yaml qualified as Yaml
--- http
+-- http-conduit
 import Network.HTTP.Simple qualified as HTTP
+-- time
+import Data.Time (ZonedTime)
 
 -- | A token used to authenticate requests.
 --
 --   You can obtain one through the [Hetzner Cloud Console](https://console.hetzner.cloud).
 newtype Token = Token ByteString
 
--- | Error codes that can be received when a request returns an error.
---
---   The constructor names follow the original text codes but have been
---   transformed to use camel case.
-data ErrorCode =
-    -- | Insufficient permissions for this request.
-    Forbidden
-    -- | Error while parsing or processing the input.
-  | InvalidInput
-    -- | Invalid JSON input in your request.
-  | JsonError
-    -- | The item you are trying to access is locked (there is already an Action running).
-  | Locked
-    -- | Entity not found.
-  | NotFound
-    -- | Error when sending too many requests.
-  | RateLimitExceeded
-    -- | Error when exceeding the maximum quantity of a resource for an account.
-  | ResourceLimitExceeded
-    -- | The requested resource is currently unavailable.
-  | ResourceUnavailable
-    -- | Error within a service.
-  | ServiceError
-    -- | One or more of the objects fields must be unique.
-  | UniquenessError
-    -- | The Action you are trying to start is protected for this resource.
-  | Protected
-    -- | Cannot perform operation due to maintenance.
-  | Maintenance
-    -- | The resource has changed during the request, please retry.
-  | Conflict
-    -- | The corresponding resource does not support the Action.
-  | UnsupportedError
-    -- | The token is only allowed to perform GET requests.
-  | TokenReadonly
-    -- | A service or product is currently not available.
-  | Unavailable
-    deriving (Eq, Show, Enum)
-
-instance FromJSON ErrorCode where
-  parseJSON = JSON.withText "ErrorCode" $ \t ->
-    let c = Text.concat $ fmap Text.toTitle $ Text.split ((==) '_') t
-    in  case find ((==) c . Text.pack . show) [Forbidden ..] of
-          Just ec -> pure ec
-          _ -> fail $ "Unknown error code: " ++ Text.unpack c
-
-instance ToJSON ErrorCode where
-  toJSON = JSON.toJSON . Text.tail . Text.concatMap f . Text.pack . show
-    where
-      f :: Char -> Text
-      f c = if isUpper c then Text.pack ['_', toLower c] else Text.singleton c
-
 -- | An error returned by Hetzner.
 data Error = Error
   { -- | Error code.
-    errorCode :: ErrorCode
+    errorCode :: Text
     -- | Error message.
   , errorMessage :: Text
     } deriving Show
@@ -202,7 +156,7 @@ instance FromJSON Pagination where
     <*> o .:? "total_entries"
 
 -- | Server identifier.
-type ServerID = Int
+newtype ServerID = ServerID Int deriving (Show, FromJSON, ToJSON)
 
 -- | Network zones.
 data Region =
@@ -286,19 +240,27 @@ instance Exception CloudException
 --   If there is any issue while performing the request, a
 --   'CloudException' will be thrown.
 --
+--   The page argument determines which page will be requested.
+--   If not provided, it will request the first page.
+--   If a page is requested outside the valid range, an empty
+--   list will be returned, not a failure.
+--
 cloudQuery
   :: FromJSON a
-  => ByteString -- ^ Path
-  -> ByteString -- ^ Method
-  -> Token
+  => ByteString -- ^ Method
+  -> ByteString -- ^ Path
+  -> Token -- ^ Authorization token
+  -> Maybe Int -- ^ Page
   -> IO a
-cloudQuery path method (Token token) = do
+cloudQuery method path (Token token) mpage = do
   let req = HTTP.setRequestMethod method
           $ HTTP.setRequestSecure True
           $ HTTP.setRequestHost "api.hetzner.cloud"
           $ HTTP.setRequestPort 443
           $ HTTP.setRequestPath ("/v1" <> path)
           $ HTTP.addRequestHeader "Authorization" ("Bearer " <> token)
+          $ maybe id (\page -> HTTP.addToRequestQueryString
+                                 [("page", Just $ fromString $ show page)]) mpage
           $ HTTP.defaultRequest
   resp <- HTTP.httpBS req
   let body = HTTP.getResponseBody resp
@@ -308,35 +270,115 @@ cloudQuery path method (Token token) = do
            Right x -> pure x
     _ -> case JSON.eitherDecodeStrict body of
            Left err -> throwIO $ JSONError resp err
-           Right x -> throwIO $ CloudError x
+           Right x -> throwIO $ CloudError $ withoutKey @"error" x
 
 -- | Wrap a value with the key of the value within a JSON object.
 data WithKey (key :: Symbol) a = WithKey { withoutKey :: a } deriving Show
 
 instance (KnownSymbol key, FromJSON a) => FromJSON (WithKey key a) where
   parseJSON =
-    let key = symbolVal (Proxy :: Proxy key)
+    let key = symbolVal (Proxy @key)
     in  JSON.withObject ("WithKey " ++ key) $ \o ->
           WithKey <$> o .: fromString key
 
 -- | A value together with response metadata.
-data WithMeta a = WithMeta
+--   The type is annotated with the JSON key of the value.
+data WithMeta (key :: Symbol) a = WithMeta
   { -- | Response metadata.
     responseMeta :: ResponseMeta
     -- | The value alone, without the metadata.
   , withoutMeta :: a
     } deriving Show
 
-instance Functor WithMeta where
+instance Functor (WithMeta key) where
   fmap f x = x { withoutMeta = f $ withoutMeta x }
 
+instance (KnownSymbol key, FromJSON a) => FromJSON (WithMeta key a) where
+  parseJSON =
+    let key = symbolVal (Proxy @key)
+    in  JSON.withObject ("WithMeta:" ++ key) $ \o ->
+          WithMeta <$> o .: "meta" <*> o .: fromString key
+
+-- | Metadata attached to a response.
 data ResponseMeta = ResponseMeta
   { pagination :: Pagination
     } deriving Show
+
+instance FromJSON ResponseMeta where
+  parseJSON = JSON.withObject "ResponseMeta" $ \o ->
+    ResponseMeta <$> o .: "pagination"
 
 ---------------------------------------------------------------------------------------------------
 -- Actions
 ---------------------------------------------------------------------------------------------------
 
 -- | Status of an action.
-data ActionStatus = ActionRunning | ActionSuccess | ActionError
+data ActionStatus =
+    -- | Action is still running. The 'Int' argument is the
+    --   progress percentage.
+    ActionRunning Int
+    -- | Action finished successfully. The finishing time is
+    --   provided.
+  | ActionSuccess ZonedTime
+    -- | Action finished with an error. The finishing time is
+    --   provided, together with the error message.
+  | ActionError ZonedTime Error
+    deriving Show
+
+-- | Command performed by an action.
+data ActionCommand =
+    CreateServer
+  | DeleteServer
+  | StartServer
+  | StopServer
+  | SetFirewallRules
+  | ApplyFirewall
+  | CreateVolume
+  | AttachVolume
+    deriving Show
+
+instance FromJSON ActionCommand where
+  parseJSON = JSON.withText "ActionCommand" $ \t -> case t of
+    "create_server" -> pure CreateServer
+    "delete_server" -> pure DeleteServer
+    "start_server" -> pure StartServer
+    "stop_server" -> pure StopServer
+    "set_firewall_rules" -> pure SetFirewallRules
+    "apply_firewall" -> pure ApplyFirewall
+    "create_volume" -> pure CreateVolume
+    "attach_volume" -> pure AttachVolume
+    _ -> fail $ "Unknown action command " ++ Text.unpack t
+
+-- | Action identifier.
+newtype ActionID = ActionID Int deriving (Eq, Ord, Show, FromJSON)
+
+-- | Action.
+data Action = Action
+  { actionID :: ActionID
+  , actionCommand :: ActionCommand
+  , actionStatus :: ActionStatus
+  , actionStarted :: ZonedTime
+    } deriving Show
+
+instance FromJSON Action where
+  parseJSON = JSON.withObject "Action" $ \o -> do
+    status <- do statusText <- o .: "status"
+                 case statusText :: Text of
+                   "running" -> ActionRunning <$> o .: "progress"
+                   "success" -> ActionSuccess <$> o .: "finished"
+                   "error" -> ActionError <$> o .: "finished" <*> o .: "error"
+                   _ -> fail $ "Unknown action status: " ++ Text.unpack statusText
+    Action
+     <$> o .: "id"
+     <*> o .: "command"
+     <*> pure status
+     <*> o .: "started"
+
+-- | Get actions.
+getActions :: Token -> Maybe Int -> IO (WithMeta "actions" [Action])
+getActions = cloudQuery "GET" "/actions"
+
+-- | Get a single action.
+getAction :: Token -> ActionID -> IO Action
+getAction token (ActionID i) = withoutKey @"action" <$>
+  cloudQuery "GET" ("/actions/" <> fromString (show i)) token Nothing
