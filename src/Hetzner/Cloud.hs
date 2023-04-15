@@ -244,7 +244,7 @@ metadataQuery path =
           $ HTTP.setRequestSecure False
           $ HTTP.setRequestHost "169.254.169.254"
           $ HTTP.setRequestPort 80
-          $ HTTP.setRequestPath ("/hetzner/vi/metadata" <> path)
+          $ HTTP.setRequestPath ("/hetzner/v1/metadata" <> path)
           $ HTTP.defaultRequest
   in  HTTP.getResponseBody <$> HTTP.httpJSON req
 
