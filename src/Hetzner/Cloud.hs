@@ -40,6 +40,8 @@ import Data.Text qualified as Text
 -- aeson
 import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as JSON
+-- yaml
+import Data.Yaml qualified as Yaml
 -- http
 import Network.HTTP.Simple qualified as HTTP
 
@@ -246,7 +248,7 @@ metadataQuery path =
           $ HTTP.setRequestPort 80
           $ HTTP.setRequestPath ("/hetzner/v1/metadata" <> path)
           $ HTTP.defaultRequest
-  in  HTTP.getResponseBody <$> HTTP.httpJSON req
+  in  HTTP.httpBS req >>= Yaml.decodeThrow . HTTP.getResponseBody
 
 -- | Obtain metadata from running server.
 getMetadata :: IO Metadata

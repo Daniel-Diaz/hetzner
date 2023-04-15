@@ -11,4 +11,4 @@ library
   ghc-options: -Wall
   build-depends:
       base, text, aeson, network, megaparsec
-    , http-conduit, bytestring
+    , http-conduit, bytestring, yaml
