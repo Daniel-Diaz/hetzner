@@ -21,19 +21,27 @@ module Hetzner.Cloud
     -- * Server metadata
   , ServerID
   , Metadata (..)
+  , getMetadata
     ) where
+
+-- Internal imports
+import Hetzner.Cloud.Internal (parseIP)
 
 -- base
 import Data.Foldable (find)
 import Data.Char (isUpper, toLower)
 -- network
 import Network.Socket (HostAddress)
+-- bytestring
+import Data.ByteString (ByteString)
 -- text
 import Data.Text (Text)
 import Data.Text qualified as Text
 -- aeson
 import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as JSON
+-- http
+import Network.HTTP.Simple qualified as HTTP
 
 -- | A token used to authenticate requests.
 --
@@ -214,6 +222,32 @@ data Metadata = Metadata
   , metadataRegion :: Region
     } deriving Show
 
--- instance FromJSON Metadata where
---   parseJSON = JSON.withObject "Metadata" $ \o -> do
---     
+instance FromJSON Metadata where
+  parseJSON = JSON.withObject "Metadata" $ \o -> do
+    iptext <- o .: "public-ipv4"
+    case parseIP iptext of
+      Left err -> fail $ "Error reading public-ipv4: " ++ err
+      Right ip -> Metadata
+        <$> o .: "hostname"
+        <*> o .: "instance-id"
+        <*> pure ip
+        <*> o .: "availability-zone"
+        <*> o .: "region"
+
+-- | Generic metadata query.
+metadataQuery
+  :: FromJSON a
+  => ByteString
+  -> IO a
+metadataQuery path =
+  let req = HTTP.setRequestMethod "GET"
+          $ HTTP.setRequestSecure False
+          $ HTTP.setRequestHost "169.254.169.254"
+          $ HTTP.setRequestPort 80
+          $ HTTP.setRequestPath ("/hetzner/vi/metadata" <> path)
+          $ HTTP.defaultRequest
+  in  HTTP.getResponseBody <$> HTTP.httpJSON req
+
+-- | Obtain metadata from running server.
+getMetadata :: IO Metadata
+getMetadata = metadataQuery mempty

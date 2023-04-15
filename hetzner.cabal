@@ -9,4 +9,6 @@ library
   exposed-modules: Hetzner.Cloud, Hetzner.Cloud.Internal
   extensions: ImportQualifiedPost, OverloadedStrings
   ghc-options: -Wall
-  build-depends: base, text, aeson, network, megaparsec
+  build-depends:
+      base, text, aeson, network, megaparsec
+    , http-conduit, bytestring
