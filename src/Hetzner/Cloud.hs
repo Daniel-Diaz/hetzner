@@ -26,6 +26,8 @@ module Hetzner.Cloud
   , ServerID (..)
   , Metadata (..)
   , getMetadata
+    -- * Resources
+  , ResourceID (..)
     -- * Actions
   , ActionStatus (..)
   , ActionCommand (..)
@@ -352,12 +354,27 @@ instance FromJSON ActionCommand where
 -- | Action identifier.
 newtype ActionID = ActionID Int deriving (Eq, Ord, Show, FromJSON)
 
+-- | A resource ID is an ID from one of the available resources.
+data ResourceID =
+    -- | Server ID.
+    ResourceServerID ServerID
+    deriving Show
+
+instance FromJSON ResourceID where
+  parseJSON = JSON.withObject "ResourceID" $ \o -> do
+    t <- o .: "type"
+    case t :: Text of
+      "server" -> ResourceServerID <$> o .: "id"
+      _ -> fail $ "Unknown resource type: " ++ Text.unpack t
+
 -- | Action.
 data Action = Action
   { actionID :: ActionID
   , actionCommand :: ActionCommand
   , actionStatus :: ActionStatus
   , actionStarted :: ZonedTime
+    -- | Resources the action relates to.
+  , actionResources :: [ResourceID]
     } deriving Show
 
 instance FromJSON Action where
@@ -373,6 +390,7 @@ instance FromJSON Action where
      <*> o .: "command"
      <*> pure status
      <*> o .: "started"
+     <*> o .: "resources"
 
 -- | Get actions.
 getActions :: Token -> Maybe Int -> IO (WithMeta "actions" [Action])
