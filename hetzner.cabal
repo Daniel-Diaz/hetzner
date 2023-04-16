@@ -10,7 +10,7 @@ bug-reports: https://github.com/Daniel-Diaz/hetzner/issues
 
 library
   hs-source-dirs: src
-  exposed-modules: Hetzner.Cloud, Hetzner.Cloud.Internal
+  exposed-modules: Hetzner.Cloud
   extensions:
       ImportQualifiedPost
     , OverloadedStrings
@@ -23,4 +23,4 @@ library
   build-depends:
       base, text, aeson, network, megaparsec
     , http-conduit, bytestring, yaml, time
-    , country
+    , country, ip

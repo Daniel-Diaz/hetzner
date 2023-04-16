@@ -61,16 +61,13 @@ module Hetzner.Cloud
   , Pagination (..)
     ) where
 
--- Internal imports
-import Hetzner.Cloud.Internal (parseIP)
-
 -- base
 import Control.Exception (Exception, throwIO)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
 import Data.String (fromString)
--- network
-import Network.Socket (HostAddress)
+-- ip
+import Net.IPv4 (IPv4)
 -- bytestring
 import Data.ByteString (ByteString)
 -- text
@@ -208,7 +205,7 @@ data Metadata = Metadata
     -- | ID of the server.
   , metadataServerID :: ServerID
     -- | Primary public IPv4 address.
-  , metadataPublicIPv4 :: HostAddress
+  , metadataPublicIPv4 :: IPv4
     -- | Datacenter.
   , metadataDatacenter :: Text
     -- | Network zone.
@@ -216,16 +213,12 @@ data Metadata = Metadata
     } deriving Show
 
 instance FromJSON Metadata where
-  parseJSON = JSON.withObject "Metadata" $ \o -> do
-    iptext <- o .: "public-ipv4"
-    case parseIP iptext of
-      Left err -> fail $ "Error reading public-ipv4: " ++ err
-      Right ip -> Metadata
-        <$> o .: "hostname"
-        <*> o .: "instance-id"
-        <*> pure ip
-        <*> o .: "availability-zone"
-        <*> o .: "region"
+  parseJSON = JSON.withObject "Metadata" $ \o -> Metadata
+    <$> o .: "hostname"
+    <*> o .: "instance-id"
+    <*> o .: "public-ipv4"
+    <*> o .: "availability-zone"
+    <*> o .: "region"
 
 -- | Generic metadata query.
 metadataQuery
@@ -530,7 +523,6 @@ getLocations token = withoutKey @"locations" <$>
 getLocation :: Token -> LocationID -> IO Location
 getLocation token (LocationID i) = withoutKey @"location" <$>
   cloudQuery "GET" ("/locations/" <> fromString (show i)) token Nothing
-
 
 ---------------------------------------------------------------------------------------------------
 -- Server Types
