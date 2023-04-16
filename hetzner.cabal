@@ -19,8 +19,8 @@ library
     , ScopedTypeVariables
     , GeneralizedNewtypeDeriving
     , TypeApplications
-  ghc-options: -Wall
+  ghc-options: -Wall -Wunused-packages
   build-depends:
-      base, text, aeson, network, megaparsec
+      base, text, aeson, network
     , http-conduit, bytestring, yaml, time
     , country, ip

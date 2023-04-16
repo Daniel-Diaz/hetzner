@@ -53,7 +53,7 @@ module Hetzner.Cloud
   , ResourceID (..)
     -- * Generic queries
   , cloudQuery
-    -- * Wrappers
+    -- * JSON Wrappers
   , WithKey (..)
   , WithMeta (..)
     -- * Response metadata
@@ -287,6 +287,9 @@ cloudQuery method path (Token token) mpage = do
 
 -- | Wrap a value with the key of the value within a JSON object.
 data WithKey (key :: Symbol) a = WithKey { withoutKey :: a } deriving Show
+
+instance Functor (WithKey key) where
+  fmap f (WithKey x) = WithKey (f x)
 
 instance (KnownSymbol key, FromJSON a) => FromJSON (WithKey key a) where
   parseJSON =
@@ -528,4 +531,5 @@ getLocation token (LocationID i) = withoutKey @"location" <$>
 -- Server Types
 ---------------------------------------------------------------------------------------------------
 
+-- | Server type identifier.
 newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON)
