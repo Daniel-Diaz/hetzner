@@ -13,35 +13,42 @@
 module Hetzner.Cloud
   ( -- * Token
     Token (..)
-    -- * Errors
-  , Error (..)
-  , CloudException (..)
     -- * Labels
   , LabelKey (..)
   , Label (..)
   , LabelSelector (..)
-    -- * Regions
-  , Region (..)
     -- * Server metadata
   , ServerID (..)
   , Metadata (..)
   , getMetadata
-    -- * Resources
-  , ResourceID (..)
-    -- * Actions
+    -- * Queries
+    -- ** Actions
   , ActionStatus (..)
   , ActionCommand (..)
   , ActionID (..)
   , Action (..)
   , getActions
   , getAction
-    -- * Generic query
+    -- ** Locations
+  , City (..)
+  , LocationID (..)
+  , Location (..)
+  , getLocations
+  , getLocation
+    -- * Errors
+  , Error (..)
+  , CloudException (..)
+    -- * Regions
+  , Region (..)
+    -- * Resources
+  , ResourceID (..)
+    -- * Generic queries
   , cloudQuery
+    -- * Wrappers
   , WithKey (..)
   , WithMeta (..)
     -- * Response metadata
   , ResponseMeta (..)
-    -- ** Pagination
   , Pagination (..)
     ) where
 
@@ -69,6 +76,8 @@ import Data.Yaml qualified as Yaml
 import Network.HTTP.Simple qualified as HTTP
 -- time
 import Data.Time (ZonedTime)
+-- country
+import Country (Country)
 
 -- | A token used to authenticate requests.
 --
@@ -400,3 +409,59 @@ getActions = cloudQuery "GET" "/actions"
 getAction :: Token -> ActionID -> IO Action
 getAction token (ActionID i) = withoutKey @"action" <$>
   cloudQuery "GET" ("/actions/" <> fromString (show i)) token Nothing
+
+---------------------------------------------------------------------------------------------------
+-- Locations
+---------------------------------------------------------------------------------------------------
+
+data City =
+    Falkenstein
+  | Nuremberg
+  | Helsinki
+  | AshburnVA
+  | HillsboroOR
+    deriving (Eq, Show)
+
+instance FromJSON City where
+  parseJSON = JSON.withText "City" $ \t -> case t of
+    "Falkenstein" -> pure Falkenstein
+    "Nuremberg" -> pure Nuremberg
+    "Helsinki" -> pure Helsinki
+    "Ashburn, VA" -> pure AshburnVA
+    "Hillsboro, OR" -> pure HillsboroOR
+    _ -> fail $ "Unknown city: " ++ Text.unpack t
+
+-- | Location identifier.
+newtype LocationID = LocationID Int deriving (Eq, Ord, Show, FromJSON)
+
+data Location = Location
+  { locationCity :: City
+  , locationCountry :: Country
+  , locationDescription :: Text
+  , locationID :: LocationID
+  , locationLatitude :: Double
+  , locationLongitude :: Double
+  , locationName :: Text
+  , locationRegion :: Region
+    } deriving Show
+
+instance FromJSON Location where
+  parseJSON = JSON.withObject "Location" $ \o -> Location
+    <$> o .: "city"
+    <*> o .: "country"
+    <*> o .: "description"
+    <*> o .: "id"
+    <*> o .: "latitude"
+    <*> o .: "longitude"
+    <*> o .: "name"
+    <*> o .: "network_zone"
+
+-- | Get all locations.
+getLocations :: Token -> IO [Location]
+getLocations token = withoutKey @"locations" <$>
+  cloudQuery "GET" "/locations" token Nothing
+
+-- | Get a single location.
+getLocation :: Token -> LocationID -> IO Location
+getLocation token (LocationID i) = withoutKey @"location" <$>
+  cloudQuery "GET" ("/locations/" <> fromString (show i)) token Nothing
