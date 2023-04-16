@@ -29,12 +29,21 @@ module Hetzner.Cloud
   , Action (..)
   , getActions
   , getAction
+    -- ** Datacenters
+  , DatacenterID (..)
+  , DatacenterServers (..)
+  , Datacenter (..)
+  , DatacentersWithRecommendation (..)
+  , getDatacenters
+  , getDatacenter
     -- ** Locations
   , City (..)
   , LocationID (..)
   , Location (..)
   , getLocations
   , getLocation
+    -- ** Server types
+  , ServerTypeID (..)
     -- * Errors
   , Error (..)
   , CloudException (..)
@@ -411,6 +420,62 @@ getAction token (ActionID i) = withoutKey @"action" <$>
   cloudQuery "GET" ("/actions/" <> fromString (show i)) token Nothing
 
 ---------------------------------------------------------------------------------------------------
+-- Datacenters
+---------------------------------------------------------------------------------------------------
+
+-- | Datacenter identifier.
+newtype DatacenterID = DatacenterID Int deriving (Eq, Ord, Show, FromJSON)
+
+data DatacenterServers = DatacenterServers
+  { availableServers :: [ServerTypeID]
+  , migrationAvailableServers :: [ServerTypeID]
+  , supportedServers :: [ServerTypeID]
+    } deriving Show
+
+instance FromJSON DatacenterServers where
+  parseJSON = JSON.withObject "DatacenterServers" $ \o -> DatacenterServers
+    <$> o .: "available"
+    <*> o .: "available_for_migration"
+    <*> o .: "supported"
+
+data Datacenter = Datacenter
+  { datacenterID :: DatacenterID
+  , datacenterName :: Text
+  , datacenterDescription :: Text
+  , datacenterLocation :: Location
+  , datacenterServers :: DatacenterServers
+    } deriving Show
+
+instance FromJSON Datacenter where
+  parseJSON = JSON.withObject "Datacenter" $ \o -> Datacenter
+    <$> o .: "id"
+    <*> o .: "name"
+    <*> o .: "description"
+    <*> o .: "location"
+    <*> o .: "server_types"
+
+data DatacentersWithRecommendation = DatacentersWithRecommendation
+  { datacenters :: [Datacenter]
+    -- | The datacenter which is recommended to be used to create
+    --   new servers.
+  , datacenterRecommendation :: DatacenterID
+    } deriving Show
+
+instance FromJSON DatacentersWithRecommendation where
+  parseJSON = JSON.withObject "DatacentersWithRecommendation" $ \o -> DatacentersWithRecommendation
+    <$> o .: "datacenters"
+    <*> o .: "recommendation"
+
+-- | Get all datacenters.
+getDatacenters :: Token -> IO DatacentersWithRecommendation
+getDatacenters token = cloudQuery "GET" "/datacenters" token Nothing
+
+-- | Get a single datacenter.
+getDatacenter :: Token -> DatacenterID -> IO Datacenter
+getDatacenter token (DatacenterID i) = withoutKey @"datacenter" <$>
+  cloudQuery "GET" ("/datacenters/" <> fromString (show i)) token Nothing
+
+---------------------------------------------------------------------------------------------------
 -- Locations
 ---------------------------------------------------------------------------------------------------
 
@@ -465,3 +530,10 @@ getLocations token = withoutKey @"locations" <$>
 getLocation :: Token -> LocationID -> IO Location
 getLocation token (LocationID i) = withoutKey @"location" <$>
   cloudQuery "GET" ("/locations/" <> fromString (show i)) token Nothing
+
+
+---------------------------------------------------------------------------------------------------
+-- Server Types
+---------------------------------------------------------------------------------------------------
+
+newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON)
