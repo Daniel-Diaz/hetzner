@@ -23,6 +23,6 @@ library
     , TypeApplications
   ghc-options: -Wall -Wunused-packages
   build-depends:
-      base, text, aeson, containers
+      base, text, aeson, containers, conduit
     , http-conduit, bytestring, yaml, time
-    , country, ip, megaparsec
+    , country, ip, megaparsec, scientific

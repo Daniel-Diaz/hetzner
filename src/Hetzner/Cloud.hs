@@ -39,13 +39,23 @@ module Hetzner.Cloud
   , DatacentersWithRecommendation (..)
   , getDatacenters
   , getDatacenter
+    -- ** Images
+  , OSFlavor (..)
+  , ImageType (..)
+  , ImageID (..)
+  , Image (..)
+  , getImages
     -- ** Locations
   , City (..)
   , LocationID (..)
   , Location (..)
   , getLocations
   , getLocation
+    -- ** Pricing
+  , Price (..)
     -- ** Server types
+  , Architecture (..)
+  , StorageType (..)
   , ServerTypeID (..)
     -- ** SSH Keys
   , SSHKeyID (..)
@@ -65,6 +75,9 @@ module Hetzner.Cloud
     -- * Generic queries
   , cloudQuery
   , noBody
+    -- * Streaming queries
+  , streamQuery
+  , streamToList
     -- * JSON Wrappers
   , WithKey (..)
   , WithMeta (..)
@@ -81,6 +94,9 @@ import Data.Proxy
 import Data.String (fromString)
 import GHC.Fingerprint (Fingerprint (..))
 import Data.Void
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Foldable (forM_)
+import Data.Maybe (isNothing)
 -- ip
 import Net.IPv4 (IPv4)
 -- bytestring
@@ -110,6 +126,11 @@ import Text.Megaparsec qualified as Parser
 -- containers
 import Data.Map (Map)
 import Data.Map qualified as Map
+-- scientific
+import Data.Scientific (Scientific)
+-- conduit
+import Data.Conduit (ConduitT)
+import Data.Conduit qualified as Conduit
 
 -- | A token used to authenticate requests.
 --
@@ -359,14 +380,41 @@ cloudQuery method path mbody (Token token) mpage = do
            Right x -> throwIO $ CloudError $ withoutKey @"error" x
 
 -- | Used to send requests without a body.
-noBody :: Maybe ()
+noBody :: Maybe Void
 noBody = Nothing
+
+-- | Stream results using a query function that takes a page number,
+--   going through all the pages.
+streamQuery
+  :: forall key f a i m
+   . (Foldable f, MonadIO m)
+  -- | Function that takes page number and returns result.
+  => (Maybe Int -> IO (WithMeta key (f a)))
+  -- | Conduit-based stream that yields results downstream.
+  -> ConduitT i a m ()
+streamQuery f = go Nothing
+  where
+    go :: Maybe Int -> ConduitT i a m ()
+    go mpage = do
+      resp <- liftIO $ f mpage
+      -- Yield results from response
+      forM_ resp $ mapM_ Conduit.yield
+      -- Continue if not in last page
+      let next = nextPage $ pagination $ responseMeta resp
+      if isNothing next then pure () else go next
+
+-- | Convenient function to turn streams into lists.
+streamToList :: Monad m => ConduitT () a m () -> m [a]
+streamToList = Conduit.sourceToList
 
 -- | Wrap a value with the key of the value within a JSON object.
 data WithKey (key :: Symbol) a = WithKey { withoutKey :: a } deriving Show
 
 instance Functor (WithKey key) where
   fmap f (WithKey x) = WithKey (f x)
+
+instance Foldable (WithKey key) where
+  foldMap f (WithKey x) = f x
 
 instance (KnownSymbol key, FromJSON a) => FromJSON (WithKey key a) where
   parseJSON =
@@ -385,6 +433,9 @@ data WithMeta (key :: Symbol) a = WithMeta
 
 instance Functor (WithMeta key) where
   fmap f x = x { withoutMeta = f $ withoutMeta x }
+
+instance Foldable (WithMeta key) where
+  foldMap f = f . withoutMeta
 
 instance (KnownSymbol key, FromJSON a) => FromJSON (WithMeta key a) where
   parseJSON =
@@ -549,6 +600,76 @@ getDatacenter token (DatacenterID i) = withoutKey @"datacenter" <$>
   cloudQuery "GET" ("/datacenters/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
+-- Images
+----------------------------------------------------------------------------------------------------
+
+-- | Image identifier.
+newtype ImageID = ImageID Int deriving (Eq, Ord, Show, FromJSON)
+
+-- | Flavor of operative system.
+data OSFlavor = Ubuntu | CentOS | Debian | Fedora | Rocky | Alma | UnknownOS deriving Show
+
+instance FromJSON OSFlavor where
+  parseJSON = JSON.withText "OSFlavor" $ \t -> case t of
+    "ubuntu"  -> pure Ubuntu
+    "centos"  -> pure CentOS
+    "debian"  -> pure Debian
+    "fedora"  -> pure Fedora
+    "rocky"   -> pure Rocky
+    "alma"    -> pure Alma
+    "unknown" -> pure UnknownOS
+    _ -> fail $ "Unknown OS flavor: " ++ Text.unpack t
+
+-- | Image type.
+data ImageType =
+    -- | System image with name.
+    SystemImage Text
+  | AppImage
+    -- | Snapshot with size in GB.
+  | Snapshot Double
+  | Backup ServerID
+  | Temporary
+    deriving Show
+
+data Image = Image
+  { imageCreated :: ZonedTime
+  , imageDeleted :: Maybe ZonedTime
+  , imageDeprecated :: Maybe ZonedTime
+  , imageDescription :: Text
+    -- | Size of the disk contained in the image in GB.
+  , imageDiskSize :: Int
+  , imageID :: ImageID
+  , imageLabels :: LabelMap
+  , imageOSFlavor :: OSFlavor
+  , imageType :: ImageType
+    } deriving Show
+
+instance FromJSON Image where
+  parseJSON = JSON.withObject "Image" $ \o -> do
+    typ <- do t <- o .: "type"
+              case t :: Text of
+                "system" -> SystemImage <$> o .: "name"
+                "app" -> pure AppImage
+                "snapshot" -> Snapshot <$> o .: "image_size"
+                "backup" -> Backup <$> o .: "bound_to"
+                "temporary" -> pure Temporary
+                _ -> fail $ "Unknown image type: " ++ Text.unpack t
+    Image
+      <$> o .: "created"
+      <*> o .: "deleted"
+      <*> o .: "deprecated"
+      <*> o .: "description"
+      <*> o .: "disk_size"
+      <*> o .: "id"
+      <*> o .: "labels"
+      <*> o .: "os_flavor"
+      <*> pure typ
+
+-- | Get all images.
+getImages :: Token -> Maybe Int -> IO (WithMeta "images" [Image])
+getImages = cloudQuery "GET" "/images" noBody
+
+----------------------------------------------------------------------------------------------------
 -- Locations
 ----------------------------------------------------------------------------------------------------
 
@@ -605,8 +726,43 @@ getLocation token (LocationID i) = withoutKey @"location" <$>
   cloudQuery "GET" ("/locations/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
+-- Pricing
+----------------------------------------------------------------------------------------------------
+
+-- | A resource's price.
+data Price = Price
+  { grossPrice :: Scientific
+  , netPrice :: Scientific
+    } deriving (Eq, Show)
+
+instance Ord Price where
+  compare p p' = compare (grossPrice p) (grossPrice p')
+
+instance FromJSON Price where
+  parseJSON = JSON.withObject "Price" $ \o ->
+    Price <$> o .: "gross" <*> o .: "net"
+
+----------------------------------------------------------------------------------------------------
 -- Server Types
 ----------------------------------------------------------------------------------------------------
+
+-- | Computer architecture.
+data Architecture = X86 | Arm deriving (Eq, Show)
+
+instance FromJSON Architecture where
+  parseJSON = JSON.withText "Architecture" $ \t -> case t of
+    "x86" -> pure X86
+    "arm" -> pure Arm
+    _ -> fail $ "Unknown architecture: " ++ Text.unpack t
+
+-- | Type of server boot drive.
+data StorageType = LocalStorage | NetworkStorage deriving (Eq, Show)
+
+instance FromJSON StorageType where
+  parseJSON = JSON.withText "StorageType" $ \t -> case t of
+    "local" -> pure LocalStorage
+    "network" -> pure NetworkStorage
+    _ -> fail $ "Unknown storage type: " ++ Text.unpack t
 
 -- | Server type identifier.
 newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON)
@@ -650,9 +806,9 @@ getSSHKey token (SSHKeyID i) = withoutKey @"ssh_key" <$>
 -- | Upload an SSH key.
 createSSHKey
   :: Token
-  -> Text -- ^ Name for the SSH key
-  -> Text -- ^ Public key
-  -> [Label] -- ^ List of labels to attach to the key
+  -> Text -- ^ Name for the SSH key.
+  -> Text -- ^ Public key.
+  -> [Label] -- ^ List of labels to attach to the key.
   -> IO SSHKey
 createSSHKey token name public labels = withoutKey @"ssh_key" <$>
   let body = JSON.object
@@ -671,8 +827,8 @@ deleteSSHKey token (SSHKeyID i) =
 updateSSHKey
   :: Token
   -> SSHKeyID
-  -> Text -- ^ New name for the key
-  -> [Label] -- ^ New labels for the key
+  -> Text -- ^ New name for the key.
+  -> [Label] -- ^ New labels for the key.
   -> IO ()
 updateSSHKey token (SSHKeyID i) name labels =
   let body = JSON.object
