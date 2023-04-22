@@ -53,10 +53,14 @@ module Hetzner.Cloud
   , getLocation
     -- ** Pricing
   , Price (..)
+  , PriceInLocation (..)
     -- ** Server types
   , Architecture (..)
   , StorageType (..)
+  , CPUType (..)
   , ServerTypeID (..)
+  , ServerType (..)
+  , getServerTypes
     -- ** SSH Keys
   , SSHKeyID (..)
   , SSHKey (..)
@@ -94,9 +98,10 @@ import Data.Proxy
 import Data.String (fromString)
 import GHC.Fingerprint (Fingerprint (..))
 import Data.Void
+import Control.Applicative (liftA2)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (forM_)
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, fromMaybe)
 -- ip
 import Net.IPv4 (IPv4)
 -- bytestring
@@ -123,6 +128,7 @@ import Data.Time (ZonedTime)
 import Country (Country)
 -- megaparsec
 import Text.Megaparsec qualified as Parser
+import Text.Megaparsec.Char.Lexer qualified as Parser
 -- containers
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -735,12 +741,41 @@ data Price = Price
   , netPrice :: Scientific
     } deriving (Eq, Show)
 
+-- | The 'Ord' instance can be used to compare prices.
+--   Only the gross price is used for comparisons.
 instance Ord Price where
   compare p p' = compare (grossPrice p) (grossPrice p')
 
+-- | Prices are written as strings. This internal type helps
+--   parsing that string in the 'FromJSON' instance.
+newtype PriceString = PriceString { fromPriceString :: Scientific }
+
+instance FromJSON PriceString where
+  parseJSON = JSON.withText "PriceString" $ \t ->
+   either (fail . Parser.errorBundlePretty) (pure . PriceString) $
+     Parser.runParser (Parser.scientific :: Parser Scientific) "JSON" t
+
 instance FromJSON Price where
   parseJSON = JSON.withObject "Price" $ \o ->
-    Price <$> o .: "gross" <*> o .: "net"
+    liftA2 Price (fromPriceString <$> o .: "gross")
+                 (fromPriceString <$> o .: "net")
+
+-- | The price of a resource in a location.
+--   Hourly pricing is unavailable for some resources.
+data PriceInLocation = PriceInLocation
+  { -- | Location name.
+    priceLocation :: Text
+    -- | Hourly price.
+  , hourlyPrice :: Maybe Price
+    -- | Monthly price.
+  , monthlyPrice :: Price
+    } deriving Show
+
+instance FromJSON PriceInLocation where
+  parseJSON = JSON.withObject "PriceInLocation" $ \o -> PriceInLocation
+    <$> o .:  "location"
+    <*> o .:? "price_hourly"
+    <*> o .:  "price_monthly"
 
 ----------------------------------------------------------------------------------------------------
 -- Server Types
@@ -764,8 +799,51 @@ instance FromJSON StorageType where
     "network" -> pure NetworkStorage
     _ -> fail $ "Unknown storage type: " ++ Text.unpack t
 
+data CPUType = SharedCPU | DedicatedCPU deriving (Eq, Show)
+
+instance FromJSON CPUType where
+  parseJSON = JSON.withText "CPUType" $ \t -> case t of
+    "shared" -> pure SharedCPU
+    "dedicated" -> pure DedicatedCPU
+    _ -> fail $ "Unknown CPU type: " ++ Text.unpack t
+
 -- | Server type identifier.
 newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON)
+
+data ServerType = ServerType
+  { serverArchitecture :: Architecture
+  , serverCores :: Int
+  , serverCPUType :: CPUType
+  , serverDeprecated :: Bool
+  , serverTypeDescription :: Text
+    -- | Disk size a server of this type has in GB.
+  , serverDisk :: Int
+  , serverTypeID :: ServerTypeID
+    -- | Memory a server of this type has in GB.
+  , serverMemory :: Int
+  , serverTypeName :: Text
+  , serverPricing :: [PriceInLocation]
+  , serverStorageType :: StorageType
+    } deriving Show
+
+instance FromJSON ServerType where
+  parseJSON = JSON.withObject "ServerType" $ \o -> ServerType
+    <$> o .: "architecture"
+    <*> o .: "cores"
+    <*> o .: "cpu_type"
+    <*> (fromMaybe False <$> o .: "deprecated")
+    <*> o .: "description"
+    <*> o .: "disk"
+    <*> o .: "id"
+    <*> o .: "memory"
+    <*> o .: "name"
+    <*> o .: "prices"
+    <*> o .: "storage_type"
+
+-- | Get all server types.
+getServerTypes :: Token -> IO [ServerType]
+getServerTypes token = withoutKey @"server_types" <$>
+  cloudQuery "GET" "/server_types" noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- SSH Keys
