@@ -21,7 +21,6 @@ module Hetzner.Cloud
   , fromLabelMap
   , LabelSelector (..)
     -- * Server metadata
-  , ServerID (..)
   , Metadata (..)
   , getMetadata
     -- * Queries
@@ -39,6 +38,10 @@ module Hetzner.Cloud
   , DatacentersWithRecommendation (..)
   , getDatacenters
   , getDatacenter
+    -- ** Firewalls
+  , FirewallID (..)
+    -- ** Floating IPs
+  , FloatingIPID (..)
     -- ** Images
   , OSFlavor (..)
   , ImageType (..)
@@ -54,6 +57,12 @@ module Hetzner.Cloud
     -- ** Pricing
   , Price (..)
   , PriceInLocation (..)
+    -- ** Servers
+  , ServerStatus (..)
+  , ServerID (..)
+  , Server (..)
+  , getServers
+  , getServer
     -- ** Server types
   , Architecture (..)
   , StorageType (..)
@@ -76,6 +85,10 @@ module Hetzner.Cloud
   , Region (..)
     -- * Resources
   , ResourceID (..)
+    -- * Public networks
+  , FirewallStatus (..)
+  , PublicIPInfo (..)
+  , PublicNetwork (..)
     -- * Generic queries
   , cloudQuery
   , noBody
@@ -104,6 +117,7 @@ import Data.Foldable (forM_)
 import Data.Maybe (isNothing, fromMaybe)
 -- ip
 import Net.IPv4 (IPv4)
+import Net.IPv6 (IPv6, IPv6Range)
 -- bytestring
 import Data.ByteString (ByteString)
 -- text
@@ -270,9 +284,6 @@ instance FromJSON Pagination where
     <*> o .:? "last_page"
     <*> o .:? "total_entries"
 
--- | Server identifier.
-newtype ServerID = ServerID Int deriving (Show, FromJSON, ToJSON)
-
 -- | Network zones.
 data Region =
     -- | Nuremberg, Falkenstein, Helsinki.
@@ -343,6 +354,48 @@ data CloudException =
     deriving Show
 
 instance Exception CloudException
+
+-- | A firewall ID and whether the status is applied or not.
+data FirewallStatus = FirewallStatus
+  { firewallStatusID :: FirewallID
+  , firewallIsApplied :: Bool
+    } deriving Show
+
+instance FromJSON FirewallStatus where
+  parseJSON = JSON.withObject "FirewallStatus" $ \o -> do
+    status <- o .: "status"
+    liftA2 FirewallStatus (o .: "id") $ case status of
+      "applied" -> pure True
+      "pending" -> pure False
+      _ -> fail $ "Invalid firewall status: " ++ Text.unpack status
+
+-- | Public IP information.
+data PublicIPInfo dnsptr ip = PublicIPInfo
+  { -- | Reverse DNS PTR entry/entries.
+    reverseDNS :: dnsptr
+    -- | IP address.
+  , publicIP :: ip
+    } deriving Show
+
+instance (FromJSON dnsptr, FromJSON ip) => FromJSON (PublicIPInfo dnsptr ip) where
+  parseJSON = JSON.withObject "PublicIPInfo" $ \o -> PublicIPInfo
+    <$> o .: "dns_ptr"
+    <*> o .: "ip"
+
+-- | Public network information associated with a 'Server'.
+data PublicNetwork = PublicNetwork
+  { publicNetworkFirewalls :: [FirewallStatus]
+  , publicNetworkFloatingIPs :: [FloatingIPID]
+  , publicIPv4 :: Maybe (PublicIPInfo Text IPv4)
+  , publicIPv6 :: Maybe (PublicIPInfo [PublicIPInfo Text IPv6] IPv6Range)
+    } deriving Show
+
+instance FromJSON PublicNetwork where
+  parseJSON = JSON.withObject "PublicNetwork" $ \o -> PublicNetwork
+    <$> o .: "firewalls"
+    <*> o .: "floating_ips"
+    <*> o .: "ipv4"
+    <*> o .: "ipv6"
 
 -- | Generic Hetzner Cloud query.
 --
@@ -606,6 +659,19 @@ getDatacenter token (DatacenterID i) = withoutKey @"datacenter" <$>
   cloudQuery "GET" ("/datacenters/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
+-- Firewalls
+----------------------------------------------------------------------------------------------------
+
+-- | Firewall identifier.
+newtype FirewallID = FirewallID Int deriving (Eq, Ord, Show, FromJSON)
+
+----------------------------------------------------------------------------------------------------
+-- Floating IPs
+----------------------------------------------------------------------------------------------------
+
+newtype FloatingIPID = FloatingIPID Int deriving (Eq, Ord, Show, FromJSON)
+
+----------------------------------------------------------------------------------------------------
 -- Images
 ----------------------------------------------------------------------------------------------------
 
@@ -776,6 +842,73 @@ instance FromJSON PriceInLocation where
     <$> o .:  "location"
     <*> o .:? "price_hourly"
     <*> o .:  "price_monthly"
+
+----------------------------------------------------------------------------------------------------
+-- Servers
+----------------------------------------------------------------------------------------------------
+
+data ServerStatus =
+    Running
+  | Initializing
+  | Starting
+  | Stopping
+  | Off
+  | Deleting
+  | Migrating
+  | Rebuilding
+  | StatusUnknown
+    deriving (Eq, Show)
+
+instance FromJSON ServerStatus where
+  parseJSON = JSON.withText "ServerStatus" $ \t -> case t of
+    "running" -> pure Running
+    "initializing" -> pure Initializing
+    "starting" -> pure Starting
+    "stopping" -> pure Stopping
+    "off" -> pure Off
+    "deleting" -> pure Deleting
+    "migrating" -> pure Migrating
+    "rebuilding" -> pure Rebuilding
+    "unknown" -> pure StatusUnknown
+    _ -> fail $ "Invalid server status: " ++ Text.unpack t
+
+-- | Server identifier.
+newtype ServerID = ServerID Int deriving (Show, FromJSON, ToJSON)
+
+data Server = Server
+  { serverCreated :: ZonedTime
+  , serverDatacenter :: Datacenter
+  , serverID :: ServerID
+  , serverImage :: Image
+  , serverLabels :: LabelMap
+  , serverIsLocked :: Bool
+  , serverName :: Text
+  , serverPublicNetwork :: PublicNetwork
+  , serverType :: ServerType
+  , serverStatus :: ServerStatus
+    } deriving Show
+
+instance FromJSON Server where
+  parseJSON = JSON.withObject "Server" $ \o -> Server
+    <$> o .: "created"
+    <*> o .: "datacenter"
+    <*> o .: "id"
+    <*> o .: "image"
+    <*> o .: "labels"
+    <*> o .: "locked"
+    <*> o .: "name"
+    <*> o .: "public_net"
+    <*> o .: "server_type"
+    <*> o .: "status"
+
+-- | Get all servers.
+getServers :: Token -> Maybe Int -> IO (WithMeta "servers" [Server])
+getServers = cloudQuery "GET" "/servers" noBody
+
+-- | Get a single server.
+getServer :: Token -> ServerID -> IO Server
+getServer token (ServerID i) = withoutKey @"server" <$>
+  cloudQuery "GET" ("/servers/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Server Types
