@@ -10,7 +10,9 @@ bug-reports: https://github.com/Daniel-Diaz/hetzner/issues
 
 library
   hs-source-dirs: src
-  exposed-modules: Hetzner.Cloud
+  exposed-modules:
+    Hetzner.Cloud
+    Hetzner.Cloud.Fingerprint
   extensions:
       ImportQualifiedPost
     , OverloadedStrings
@@ -21,6 +23,6 @@ library
     , TypeApplications
   ghc-options: -Wall -Wunused-packages
   build-depends:
-      base, text, aeson, network
+      base, text, aeson
     , http-conduit, bytestring, yaml, time
-    , country, ip
+    , country, ip, megaparsec

@@ -1,4 +1,4 @@
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 -- | Hetzner Cloud API client.
 --
@@ -44,6 +44,9 @@ module Hetzner.Cloud
   , getLocation
     -- ** Server types
   , ServerTypeID (..)
+    -- ** SSH Keys
+  , SSHKey (..)
+  , getSSHKeys
     -- * Errors
   , Error (..)
   , CloudException (..)
@@ -61,11 +64,13 @@ module Hetzner.Cloud
   , Pagination (..)
     ) where
 
+import Hetzner.Cloud.Fingerprint ()
 -- base
 import Control.Exception (Exception, throwIO)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
 import Data.String (fromString)
+import GHC.Fingerprint (Fingerprint (..))
 -- ip
 import Net.IPv4 (IPv4)
 -- bytestring
@@ -324,9 +329,9 @@ instance FromJSON ResponseMeta where
   parseJSON = JSON.withObject "ResponseMeta" $ \o ->
     ResponseMeta <$> o .: "pagination"
 
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Actions
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 -- | Status of an action.
 data ActionStatus =
@@ -415,9 +420,9 @@ getAction :: Token -> ActionID -> IO Action
 getAction token (ActionID i) = withoutKey @"action" <$>
   cloudQuery "GET" ("/actions/" <> fromString (show i)) token Nothing
 
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Datacenters
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 -- | Datacenter identifier.
 newtype DatacenterID = DatacenterID Int deriving (Eq, Ord, Show, FromJSON)
@@ -471,9 +476,9 @@ getDatacenter :: Token -> DatacenterID -> IO Datacenter
 getDatacenter token (DatacenterID i) = withoutKey @"datacenter" <$>
   cloudQuery "GET" ("/datacenters/" <> fromString (show i)) token Nothing
 
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Locations
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 data City =
     Falkenstein
@@ -527,9 +532,38 @@ getLocation :: Token -> LocationID -> IO Location
 getLocation token (LocationID i) = withoutKey @"location" <$>
   cloudQuery "GET" ("/locations/" <> fromString (show i)) token Nothing
 
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Server Types
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 -- | Server type identifier.
 newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON)
+
+----------------------------------------------------------------------------------------------------
+-- SSH Keys
+----------------------------------------------------------------------------------------------------
+
+-- | SSH key identifier.
+newtype SSHKeyID = SSHKeyID Int deriving (Eq, Ord, Show, FromJSON)
+
+-- | SSH key information.
+data SSHKey = SSHKey
+  { sshKeyCreated :: ZonedTime
+  , sshKeyFingerprint :: Fingerprint
+  , sshKeyID :: SSHKeyID
+  , sshKeyName :: Text
+  , sshKeyPublicKey :: Text
+    } deriving Show
+
+instance FromJSON SSHKey where
+  parseJSON = JSON.withObject "SSHKey" $ \o -> SSHKey
+    <$> o .: "created"
+    <*> o .: "fingerprint"
+    <*> o .: "id"
+    <*> o .: "name"
+    <*> o .: "public_key"
+
+-- | Get all uploaded SSH keys.
+getSSHKeys :: Token -> IO [SSHKey]
+getSSHKeys token = withoutKey @"ssh_keys" <$>
+  cloudQuery "GET" "/ssh_keys" token Nothing
