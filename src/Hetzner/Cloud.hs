@@ -355,7 +355,7 @@ data CloudException =
 
 instance Exception CloudException
 
--- | A firewall ID and whether the status is applied or not.
+-- | A firewall ID and whether the firewall is applied or not.
 data FirewallStatus = FirewallStatus
   { firewallStatusID :: FirewallID
   , firewallIsApplied :: Bool
@@ -373,7 +373,7 @@ instance FromJSON FirewallStatus where
 data PublicIPInfo dnsptr ip = PublicIPInfo
   { -- | Reverse DNS PTR entry/entries.
     reverseDNS :: dnsptr
-    -- | IP address.
+    -- | IP address/addresses.
   , publicIP :: ip
     } deriving Show
 
