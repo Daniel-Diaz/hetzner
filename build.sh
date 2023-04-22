@@ -13,8 +13,5 @@ stack --resolver=$1 build
 }
 
 # Run build command for all the resolvers we want to support.
-build lts-17
-build lts-18
-build lts-19
 build lts-20
 build nightly
