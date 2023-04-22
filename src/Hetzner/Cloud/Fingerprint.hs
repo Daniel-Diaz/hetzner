@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Hetzner.Cloud.Fingerprint (
     Fingerprint

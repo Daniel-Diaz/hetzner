@@ -47,6 +47,7 @@ module Hetzner.Cloud
     -- ** SSH Keys
   , SSHKey (..)
   , getSSHKeys
+  , getSSHKey
     -- * Errors
   , Error (..)
   , CloudException (..)
@@ -56,6 +57,7 @@ module Hetzner.Cloud
   , ResourceID (..)
     -- * Generic queries
   , cloudQuery
+  , noBody
     -- * JSON Wrappers
   , WithKey (..)
   , WithMeta (..)
@@ -264,18 +266,20 @@ instance Exception CloudException
 --   list will be returned, not a failure.
 --
 cloudQuery
-  :: FromJSON a
+  :: (ToJSON body, FromJSON a)
   => ByteString -- ^ Method
   -> ByteString -- ^ Path
+  -> Maybe body -- ^ Request body. You may use 'noBody' to skip.
   -> Token -- ^ Authorization token
   -> Maybe Int -- ^ Page
   -> IO a
-cloudQuery method path (Token token) mpage = do
+cloudQuery method path mbody (Token token) mpage = do
   let req = HTTP.setRequestMethod method
           $ HTTP.setRequestSecure True
           $ HTTP.setRequestHost "api.hetzner.cloud"
           $ HTTP.setRequestPort 443
           $ HTTP.setRequestPath ("/v1" <> path)
+          $ maybe id HTTP.setRequestBodyJSON mbody
           $ HTTP.addRequestHeader "Authorization" ("Bearer " <> token)
           $ maybe id (\page -> HTTP.addToRequestQueryString
                                  [("page", Just $ fromString $ show page)]) mpage
@@ -289,6 +293,10 @@ cloudQuery method path (Token token) mpage = do
     _ -> case JSON.eitherDecodeStrict body of
            Left err -> throwIO $ JSONError resp err
            Right x -> throwIO $ CloudError $ withoutKey @"error" x
+
+-- | Used to send requests without a body.
+noBody :: Maybe ()
+noBody = Nothing
 
 -- | Wrap a value with the key of the value within a JSON object.
 data WithKey (key :: Symbol) a = WithKey { withoutKey :: a } deriving Show
@@ -413,12 +421,12 @@ instance FromJSON Action where
 
 -- | Get actions.
 getActions :: Token -> Maybe Int -> IO (WithMeta "actions" [Action])
-getActions = cloudQuery "GET" "/actions"
+getActions = cloudQuery "GET" "/actions" noBody
 
 -- | Get a single action.
 getAction :: Token -> ActionID -> IO Action
 getAction token (ActionID i) = withoutKey @"action" <$>
-  cloudQuery "GET" ("/actions/" <> fromString (show i)) token Nothing
+  cloudQuery "GET" ("/actions/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Datacenters
@@ -469,12 +477,12 @@ instance FromJSON DatacentersWithRecommendation where
 
 -- | Get all datacenters.
 getDatacenters :: Token -> IO DatacentersWithRecommendation
-getDatacenters token = cloudQuery "GET" "/datacenters" token Nothing
+getDatacenters token = cloudQuery "GET" "/datacenters" noBody token Nothing
 
 -- | Get a single datacenter.
 getDatacenter :: Token -> DatacenterID -> IO Datacenter
 getDatacenter token (DatacenterID i) = withoutKey @"datacenter" <$>
-  cloudQuery "GET" ("/datacenters/" <> fromString (show i)) token Nothing
+  cloudQuery "GET" ("/datacenters/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Locations
@@ -525,12 +533,12 @@ instance FromJSON Location where
 -- | Get all locations.
 getLocations :: Token -> IO [Location]
 getLocations token = withoutKey @"locations" <$>
-  cloudQuery "GET" "/locations" token Nothing
+  cloudQuery "GET" "/locations" noBody token Nothing
 
 -- | Get a single location.
 getLocation :: Token -> LocationID -> IO Location
 getLocation token (LocationID i) = withoutKey @"location" <$>
-  cloudQuery "GET" ("/locations/" <> fromString (show i)) token Nothing
+  cloudQuery "GET" ("/locations/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Server Types
@@ -566,4 +574,9 @@ instance FromJSON SSHKey where
 -- | Get all uploaded SSH keys.
 getSSHKeys :: Token -> IO [SSHKey]
 getSSHKeys token = withoutKey @"ssh_keys" <$>
-  cloudQuery "GET" "/ssh_keys" token Nothing
+  cloudQuery "GET" "/ssh_keys" noBody token Nothing
+
+-- | Get a single SSH key.
+getSSHKey :: Token -> SSHKeyID -> IO SSHKey
+getSSHKey token (SSHKeyID i) = withoutKey @"ssh_key" <$>
+  cloudQuery "GET" ("/ssh_keys/" <> fromString (show i)) noBody token Nothing
