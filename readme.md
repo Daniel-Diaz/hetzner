@@ -1,6 +1,6 @@
 ## Description
 
-Client interface for the Hetzner Cloud API.
+Client interface for the Hetzner Cloud API written in the Haskell programming language.
 
 ## Status
 
