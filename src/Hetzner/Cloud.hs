@@ -18,6 +18,7 @@ module Hetzner.Cloud
   , Label (..)
   , LabelMap
   , toLabelMap
+  , fromLabelMap
   , LabelSelector (..)
     -- * Server metadata
   , ServerID (..)
@@ -47,10 +48,13 @@ module Hetzner.Cloud
     -- ** Server types
   , ServerTypeID (..)
     -- ** SSH Keys
+  , SSHKeyID (..)
   , SSHKey (..)
   , getSSHKeys
   , getSSHKey
   , createSSHKey
+  , deleteSSHKey
+  , updateSSHKey
     -- * Errors
   , Error (..)
   , CloudException (..)
@@ -181,6 +185,10 @@ type LabelMap = Map LabelKey Text
 -- | Build a label map from a list of labels.
 toLabelMap :: [Label] -> LabelMap
 toLabelMap = foldr (\label -> Map.insert (labelKey label) $ labelValue label) Map.empty
+
+-- | Get a list of labels from a label map.
+fromLabelMap :: LabelMap -> [Label]
+fromLabelMap = Map.foldrWithKey (\k v xs -> Label k v : xs) []
 
 -- | Label selectors can be used to filter results.
 data LabelSelector =
@@ -653,3 +661,22 @@ createSSHKey token name public labels = withoutKey @"ssh_key" <$>
         , "public_key" .= public
           ]
   in  cloudQuery "POST" "/ssh_keys" (Just body) token Nothing
+
+-- | Delete an SSH key.
+deleteSSHKey :: Token -> SSHKeyID -> IO ()
+deleteSSHKey token (SSHKeyID i) =
+  cloudQuery "DELETE" ("/ssh_keys/" <> fromString (show i)) noBody token Nothing
+
+-- | Update name and labels of an SSH key.
+updateSSHKey
+  :: Token
+  -> SSHKeyID
+  -> Text -- ^ New name for the key
+  -> [Label] -- ^ New labels for the key
+  -> IO ()
+updateSSHKey token (SSHKeyID i) name labels =
+  let body = JSON.object
+        [ "labels" .= toLabelMap labels
+        , "name" .= name
+          ]
+  in  cloudQuery "PUT" ("/ssh_keys/" <> fromString (show i)) (Just body) token Nothing
