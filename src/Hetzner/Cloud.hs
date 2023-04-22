@@ -454,8 +454,8 @@ streamQuery
 streamQuery f = go Nothing
   where
     go :: Maybe Int -> ConduitT i a m ()
-    go mpage = do
-      resp <- liftIO $ f mpage
+    go page = do
+      resp <- liftIO $ f page
       -- Yield results from response
       forM_ resp $ mapM_ Conduit.yield
       -- Continue if not in last page
