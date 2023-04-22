@@ -16,6 +16,8 @@ module Hetzner.Cloud
     -- * Labels
   , LabelKey (..)
   , Label (..)
+  , LabelMap
+  , toLabelMap
   , LabelSelector (..)
     -- * Server metadata
   , ServerID (..)
@@ -48,6 +50,7 @@ module Hetzner.Cloud
   , SSHKey (..)
   , getSSHKeys
   , getSSHKey
+  , createSSHKey
     -- * Errors
   , Error (..)
   , CloudException (..)
@@ -73,6 +76,7 @@ import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
 import Data.String (fromString)
 import GHC.Fingerprint (Fingerprint (..))
+import Data.Void
 -- ip
 import Net.IPv4 (IPv4)
 -- bytestring
@@ -81,8 +85,14 @@ import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 -- aeson
-import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
+import Data.Aeson
+  ( FromJSON, ToJSON
+  , (.:), (.:?), (.=)
+  , FromJSONKey, ToJSONKey
+    )
 import Data.Aeson qualified as JSON
+import Data.Aeson.Key qualified as JSONKey
+import Data.Aeson.Encoding qualified as JSONEncoding
 -- yaml
 import Data.Yaml qualified as Yaml
 -- http-conduit
@@ -91,6 +101,11 @@ import Network.HTTP.Simple qualified as HTTP
 import Data.Time (ZonedTime)
 -- country
 import Country (Country)
+-- megaparsec
+import Text.Megaparsec qualified as Parser
+-- containers
+import Data.Map (Map)
+import Data.Map qualified as Map
 
 -- | A token used to authenticate requests.
 --
@@ -118,13 +133,54 @@ data LabelKey = LabelKey
     labelKeyPrefix :: Maybe Text
     -- | Key name.
   , labelKeyName :: Text
-    }
+    } deriving (Eq, Ord, Show)
+
+type Parser = Parser.Parsec Void Text
+
+labelKeyParser :: Parser LabelKey
+labelKeyParser = do
+  prefix <- fmap Text.pack $ Parser.some $ Parser.anySingleBut '/'
+  atEnd <- Parser.atEnd
+  if atEnd
+     then pure $ LabelKey Nothing prefix
+     else LabelKey (Just prefix) <$> (Parser.single '/' *> Parser.takeRest)
+
+renderKeyParser :: LabelKey -> Text
+renderKeyParser k = case labelKeyPrefix k of
+  Just prefix -> Text.concat [ prefix, "/", labelKeyName k ]
+  _ -> labelKeyName k
+
+instance FromJSON LabelKey where
+  parseJSON = JSON.withText "LabelKey" $ \t ->
+    either (fail . Parser.errorBundlePretty) pure $
+      Parser.runParser labelKeyParser "JSON" t
+
+instance ToJSON LabelKey where
+   toJSON = JSON.String . renderKeyParser
+
+instance FromJSONKey LabelKey where
+  fromJSONKey = JSON.FromJSONKeyTextParser $ \t ->
+    either (fail . Parser.errorBundlePretty) pure $
+      Parser.runParser labelKeyParser "JSON key" t
+
+instance ToJSONKey LabelKey where
+  toJSONKey =
+    JSON.ToJSONKeyText
+      (JSONKey.fromText . renderKeyParser)
+      (JSONEncoding.text . renderKeyParser)
 
 -- | Labels are key-value pairs that can be attached to all resources.
 data Label = Label
   { labelKey :: LabelKey
   , labelValue :: Text
-    }
+    } deriving (Eq, Show)
+
+-- | A label map maps label keys to values.
+type LabelMap = Map LabelKey Text
+
+-- | Build a label map from a list of labels.
+toLabelMap :: [Label] -> LabelMap
+toLabelMap = foldr (\label -> Map.insert (labelKey label) $ labelValue label) Map.empty
 
 -- | Label selectors can be used to filter results.
 data LabelSelector =
@@ -559,6 +615,7 @@ data SSHKey = SSHKey
   { sshKeyCreated :: ZonedTime
   , sshKeyFingerprint :: Fingerprint
   , sshKeyID :: SSHKeyID
+  , sshKeyLabels :: LabelMap
   , sshKeyName :: Text
   , sshKeyPublicKey :: Text
     } deriving Show
@@ -568,6 +625,7 @@ instance FromJSON SSHKey where
     <$> o .: "created"
     <*> o .: "fingerprint"
     <*> o .: "id"
+    <*> o .: "labels"
     <*> o .: "name"
     <*> o .: "public_key"
 
@@ -580,3 +638,18 @@ getSSHKeys token = withoutKey @"ssh_keys" <$>
 getSSHKey :: Token -> SSHKeyID -> IO SSHKey
 getSSHKey token (SSHKeyID i) = withoutKey @"ssh_key" <$>
   cloudQuery "GET" ("/ssh_keys/" <> fromString (show i)) noBody token Nothing
+
+-- | Upload an SSH key.
+createSSHKey
+  :: Token
+  -> Text -- ^ Name for the SSH key
+  -> Text -- ^ Public key
+  -> [Label] -- ^ List of labels to attach to the key
+  -> IO SSHKey
+createSSHKey token name public labels = withoutKey @"ssh_key" <$>
+  let body = JSON.object
+        [ "labels" .= toLabelMap labels
+        , "name" .= name
+        , "public_key" .= public
+          ]
+  in  cloudQuery "POST" "/ssh_keys" (Just body) token Nothing
