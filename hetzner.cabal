@@ -10,6 +10,7 @@ maintainer: Daniel Casanueva (daniel.casanueva `at` proton.me)
 bug-reports: https://github.com/Daniel-Diaz/hetzner/issues
 license: MIT
 license-file: license
+extra-source-files: readme.md, changelog.md
 
 library
   default-language: Haskell2010
