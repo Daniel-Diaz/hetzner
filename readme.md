@@ -1,3 +1,7 @@
+# Hetzner Cloud Haskell Library
+
+![Hackage](https://img.shields.io/hackage/v/hetzner?style=for-the-badge)
+
 ## Description
 
 Client interface for the Hetzner Cloud API written in the Haskell programming language.
