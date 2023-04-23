@@ -13,11 +13,26 @@
 --   == Pagination
 --
 --   Some requests use pagination. These take a page argument of
---   type @Maybe Int@. You can use 'streamQuery' to get all pages
+--   type @'Maybe' 'Int'@. You can use 'streamQuery' to get all pages
 --   through a conduit-based stream. For example, to get all servers
 --   as a stream:
 --
--- > streamQuery (getServers token) :: ConduitT i Server m ()
+-- > streamQuery $ getServers token :: ConduitT i Server m ()
+--
+--   Or to get all server actions as a stream:
+--
+-- > streamQuery $ getActions token :: ConduitT i Action m ()
+--
+--   If you are not interested in the streaming functionality, you
+--   can simply use 'streamToList' to turn the stream into a list:
+--
+-- > streamToList $ streamQuery $ getServers token :: m [Server]
+--
+--   == Exceptions
+--
+--   This library makes extensive use of exceptions. Exceptions from
+--   this module have type 'CloudException'. All functions that perform
+--   requests to Hetzner Cloud can throw this type of exception.
 --
 module Hetzner.Cloud
   ( -- * Tokens
@@ -34,8 +49,8 @@ module Hetzner.Cloud
   , getMetadata
     -- * Hetzner Cloud API
 
-    -- | Sections are in the same order as in the official
-    --   documentation.
+    -- | Sections are in the same order as in the
+    --   [official documentation](https://docs.hetzner.cloud).
 
     -- ** Actions
   , ActionStatus (..)
