@@ -13,20 +13,20 @@
 --   == Pagination
 --
 --   Some requests use pagination. These take a page argument of
---   type @'Maybe' 'Int'@. You can use 'streamQuery' to get all pages
+--   type @'Maybe' 'Int'@. You can use 'streamPages' to get all pages
 --   through a conduit-based stream. For example, to get all servers
 --   as a stream:
 --
--- > streamQuery $ getServers token :: ConduitT i Server m ()
+-- > streamPages $ getServers token :: ConduitT i Server m ()
 --
---   Or to get all server actions as a stream:
+--   Or to get all actions as a stream:
 --
--- > streamQuery $ getActions token :: ConduitT i Action m ()
+-- > streamPages $ getActions token :: ConduitT i Action m ()
 --
 --   If you are not interested in the streaming functionality, you
 --   can simply use 'streamToList' to turn the stream into a list:
 --
--- > streamToList $ streamQuery $ getServers token :: m [Server]
+-- > streamToList $ streamPages $ getServers token :: m [Server]
 --
 --   == Exceptions
 --
@@ -37,13 +37,6 @@
 module Hetzner.Cloud
   ( -- * Tokens
     Token (..)
-    -- * Labels
-  , LabelKey (..)
-  , Label (..)
-  , LabelMap
-  , toLabelMap
-  , fromLabelMap
-  , LabelSelector (..)
     -- * Server metadata
   , Metadata (..)
   , getMetadata
@@ -115,27 +108,36 @@ module Hetzner.Cloud
   , updateSSHKey
     -- ** Volumes
   , VolumeID (..)
-    -- * Errors
+    -- * Exceptions
   , Error (..)
   , CloudException (..)
-    -- * Regions
+    -- * Labels
+  , LabelKey (..)
+  , Label (..)
+  , LabelMap
+  , toLabelMap
+  , fromLabelMap
+  , LabelSelector (..)
+    -- * Other types
+    -- ** Regions
   , Region (..)
-    -- * Resources
+    -- ** Resources
   , ResourceID (..)
-    -- * Public networks
+    -- ** Public networks
   , FirewallStatus (..)
   , PublicIPInfo (..)
   , PublicNetwork (..)
-    -- * Generic queries
+    -- * Streaming
+  , streamPages
+  , streamToList
+    -- * Generic interface
+    -- ** Generic queries
   , cloudQuery
   , noBody
-    -- * Streaming queries
-  , streamQuery
-  , streamToList
-    -- * JSON Wrappers
+    -- ** JSON Wrappers
   , WithKey (..)
   , WithMeta (..)
-    -- * Response metadata
+    -- ** Response metadata
   , ResponseMeta (..)
   , Pagination (..)
     ) where
@@ -191,7 +193,7 @@ import Data.Conduit (ConduitT)
 import Data.Conduit qualified as Conduit
 
 -- | A token used to authenticate requests. All requests made with a token
---   will have as a scope the project where the token was made.
+--   will have as scope the project where the token was made.
 --
 --   You can obtain one through the [Hetzner Cloud Console](https://console.hetzner.cloud).
 newtype Token = Token ByteString
@@ -213,7 +215,7 @@ instance ToJSON Error where
 
 -- | Label key.
 data LabelKey = LabelKey
-  { -- | Optional prefix. If specified, the prefix must be a DNS subdomain.
+  { -- | Optional prefix.
     labelKeyPrefix :: Maybe Text
     -- | Key name.
   , labelKeyName :: Text
@@ -386,7 +388,7 @@ metadataQuery path =
 getMetadata :: IO Metadata
 getMetadata = metadataQuery mempty
 
--- | Exception produced while performing a query to Hetzner Cloud.
+-- | Exception produced while performing a request to Hetzner Cloud.
 data CloudException =
     CloudError Error
   | JSONError (HTTP.Response ByteString) String
@@ -481,16 +483,16 @@ cloudQuery method path mbody (Token token) mpage = do
 noBody :: Maybe Void
 noBody = Nothing
 
--- | Stream results using a query function that takes a page number,
+-- | Stream results using a function that takes a page number,
 --   going through all the pages.
-streamQuery
+streamPages
   :: forall key f a i m
    . (Foldable f, MonadIO m)
   -- | Function that takes page number and returns result.
   => (Maybe Int -> IO (WithMeta key (f a)))
   -- | Conduit-based stream that yields results downstream.
   -> ConduitT i a m ()
-streamQuery f = go Nothing
+streamPages f = go Nothing
   where
     go :: Maybe Int -> ConduitT i a m ()
     go page = do
@@ -645,7 +647,7 @@ getAction token (ActionID i) = withoutKey @"action" <$>
   cloudQuery "GET" ("/actions/" <> fromString (show i)) noBody token Nothing
 
 -- | Wait until an action is complete and returns the finishing time.
---   It throws 'CloudException' if the action fails.
+--   It throws a 'CloudException' if the action fails.
 waitForAction :: Token -> ActionID -> IO ZonedTime
 waitForAction token i = go
   where
@@ -796,7 +798,7 @@ instance FromJSON Image where
       <*> o .: "os_flavor"
       <*> pure typ
 
--- | Get all images.
+-- | Get images.
 getImages
   :: Token
   -> Maybe Int -- ^ Page.
@@ -1057,7 +1059,7 @@ instance FromJSON CreatedServer where
     <*> o .: "root_password"
     <*> o .: "server"
 
--- | Get all servers.
+-- | Get servers.
 getServers
   :: Token
   -> Maybe Int -- ^ Page.
