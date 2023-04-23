@@ -397,7 +397,7 @@ instance FromJSON FirewallStatus where
 data PublicIPInfo dnsptr ip = PublicIPInfo
   { -- | Reverse DNS PTR entry/entries.
     reverseDNS :: dnsptr
-    -- | IP address/addresses.
+    -- | IP address/range.
   , publicIP :: ip
     } deriving Show
 
