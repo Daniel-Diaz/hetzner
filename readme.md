@@ -1,6 +1,6 @@
 # Hetzner Cloud Haskell Library
 
-![Hackage](https://img.shields.io/hackage/v/hetzner?style=for-the-badge)
+[![Hackage](https://img.shields.io/hackage/v/hetzner?style=for-the-badge)](https://hackage.haskell.org/package/hetzner)
 
 ## Description
 
