@@ -10,8 +10,17 @@
 --
 -- > import qualified Hetzner.Cloud as Hetzner
 --
+--   == Pagination
+--
+--   Some requests use pagination. These take a page argument of
+--   type @Maybe Int@. You can use 'streamQuery' to get all pages
+--   through a conduit-based stream. For example, to get all servers
+--   as a stream:
+--
+-- > streamQuery (getServers token) :: ConduitT i Server m ()
+--
 module Hetzner.Cloud
-  ( -- * Token
+  ( -- * Tokens
     Token (..)
     -- * Labels
   , LabelKey (..)
@@ -23,7 +32,11 @@ module Hetzner.Cloud
     -- * Server metadata
   , Metadata (..)
   , getMetadata
-    -- * Queries
+    -- * Hetzner Cloud API
+
+    -- | Sections are in the same order as in the official
+    --   documentation.
+
     -- ** Actions
   , ActionStatus (..)
   , ActionCommand (..)
@@ -31,6 +44,7 @@ module Hetzner.Cloud
   , Action (..)
   , getActions
   , getAction
+  , waitForAction
     -- ** Datacenters
   , DatacenterID (..)
   , DatacenterServers (..)
@@ -48,6 +62,7 @@ module Hetzner.Cloud
   , ImageID (..)
   , Image (..)
   , getImages
+  , getImage
     -- ** Locations
   , City (..)
   , LocationID (..)
@@ -83,6 +98,8 @@ module Hetzner.Cloud
   , createSSHKey
   , deleteSSHKey
   , updateSSHKey
+    -- ** Volumes
+  , VolumeID (..)
     -- * Errors
   , Error (..)
   , CloudException (..)
@@ -111,6 +128,7 @@ module Hetzner.Cloud
 import Hetzner.Cloud.Fingerprint ()
 -- base
 import Control.Exception (Exception, throwIO)
+import Control.Concurrent (threadDelay)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
 import Data.String (fromString)
@@ -157,7 +175,8 @@ import Data.Scientific (Scientific)
 import Data.Conduit (ConduitT)
 import Data.Conduit qualified as Conduit
 
--- | A token used to authenticate requests.
+-- | A token used to authenticate requests. All requests made with a token
+--   will have as a scope the project where the token was made.
 --
 --   You can obtain one through the [Hetzner Cloud Console](https://console.hetzner.cloud).
 newtype Token = Token ByteString
@@ -599,13 +618,28 @@ instance FromJSON Action where
      <*> o .: "resources"
 
 -- | Get actions.
-getActions :: Token -> Maybe Int -> IO (WithMeta "actions" [Action])
+getActions
+  :: Token
+  -> Maybe Int -- ^ Page.
+  -> IO (WithMeta "actions" [Action])
 getActions = cloudQuery "GET" "/actions" noBody
 
 -- | Get a single action.
 getAction :: Token -> ActionID -> IO Action
 getAction token (ActionID i) = withoutKey @"action" <$>
   cloudQuery "GET" ("/actions/" <> fromString (show i)) noBody token Nothing
+
+-- | Wait until an action is complete and returns the finishing time.
+--   It throws 'CloudException' if the action fails.
+waitForAction :: Token -> ActionID -> IO ZonedTime
+waitForAction token i = go
+  where
+    go :: IO ZonedTime
+    go = do action <- getAction token i
+            case actionStatus action of
+              ActionRunning _ -> threadDelay 200000 *> go
+              ActionSuccess t -> pure t
+              ActionError _ err -> throwIO $ CloudError err
 
 ----------------------------------------------------------------------------------------------------
 -- Datacenters
@@ -614,6 +648,7 @@ getAction token (ActionID i) = withoutKey @"action" <$>
 -- | Datacenter identifier.
 newtype DatacenterID = DatacenterID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
+-- | Server types available in a datacenter.
 data DatacenterServers = DatacenterServers
   { availableServers :: [ServerTypeID]
   , migrationAvailableServers :: [ServerTypeID]
@@ -626,6 +661,7 @@ instance FromJSON DatacenterServers where
     <*> o .: "available_for_migration"
     <*> o .: "supported"
 
+-- | A datacenter within a location.
 data Datacenter = Datacenter
   { datacenterID :: DatacenterID
   , datacenterName :: Text
@@ -642,6 +678,7 @@ instance FromJSON Datacenter where
     <*> o .: "location"
     <*> o .: "server_types"
 
+-- | Datacenter list with a datacenter recommendation for new servers.
 data DatacentersWithRecommendation = DatacentersWithRecommendation
   { datacenters :: [Datacenter]
     -- | The datacenter which is recommended to be used to create
@@ -674,6 +711,7 @@ newtype FirewallID = FirewallID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 -- Floating IPs
 ----------------------------------------------------------------------------------------------------
 
+-- | Floating IP identifier.
 newtype FloatingIPID = FloatingIPID Int deriving (Eq, Ord, Show, FromJSON)
 
 ----------------------------------------------------------------------------------------------------
@@ -708,6 +746,7 @@ data ImageType =
   | Temporary
     deriving Show
 
+-- | An image that can be mounted to a server.
 data Image = Image
   { imageCreated :: ZonedTime
   , imageDeleted :: Maybe ZonedTime
@@ -743,13 +782,22 @@ instance FromJSON Image where
       <*> pure typ
 
 -- | Get all images.
-getImages :: Token -> Maybe Int -> IO (WithMeta "images" [Image])
+getImages
+  :: Token
+  -> Maybe Int -- ^ Page.
+  -> IO (WithMeta "images" [Image])
 getImages = cloudQuery "GET" "/images" noBody
+
+-- | Get a single image.
+getImage :: Token -> ImageID -> IO Image
+getImage token (ImageID i) = withoutKey @"image" <$>
+  cloudQuery "GET" ("/images/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Locations
 ----------------------------------------------------------------------------------------------------
 
+-- | Cities where Hetzner hosts their servers.
 data City =
     Falkenstein
   | Nuremberg
@@ -770,6 +818,7 @@ instance FromJSON City where
 -- | Location identifier.
 newtype LocationID = LocationID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
+-- | A location.
 data Location = Location
   { locationCity :: City
   , locationCountry :: Country
@@ -852,6 +901,7 @@ instance FromJSON PriceInLocation where
 -- Servers
 ----------------------------------------------------------------------------------------------------
 
+-- | A server status.
 data ServerStatus =
     Running
   | Initializing
@@ -880,6 +930,7 @@ instance FromJSON ServerStatus where
 -- | Server identifier.
 newtype ServerID = ServerID Int deriving (Show, FromJSON, ToJSON)
 
+-- | A server.
 data Server = Server
   { serverCreated :: ZonedTime
   , serverDatacenter :: Datacenter
@@ -906,7 +957,7 @@ instance FromJSON Server where
     <*> o .: "server_type"
     <*> o .: "status"
 
--- | Server creation configuration.
+-- | Server creation configuration to be used with 'createServer'.
 data NewServer = NewServer
   { -- | Automount attached volumes.
     newServerAutomount :: Bool
@@ -972,10 +1023,15 @@ defaultNewServer name = NewServer
 
 -- | A server that was just created with 'createServer'.
 data CreatedServer = CreatedServer
-  { createdServerAction :: Action
+  { -- | Server creation action. You can use 'waitForAction'
+    --   to wait until the server creation is finished.
+    createdServerAction :: Action
+    -- | Additional server actions that are run after the server
+    --   is created, like mounting volumes or starting the server.
   , createdServerNextActions :: [Action]
     -- | Root password returned when no SSH keys are provided.
   , createdServerPassword :: Maybe Text
+    -- | The server being created.
   , createdServer :: Server
     } deriving Show
 
@@ -987,7 +1043,10 @@ instance FromJSON CreatedServer where
     <*> o .: "server"
 
 -- | Get all servers.
-getServers :: Token -> Maybe Int -> IO (WithMeta "servers" [Server])
+getServers
+  :: Token
+  -> Maybe Int -- ^ Page.
+  -> IO (WithMeta "servers" [Server])
 getServers = cloudQuery "GET" "/servers" noBody
 
 -- | Get a single server.
@@ -1027,6 +1086,7 @@ instance FromJSON StorageType where
     "network" -> pure NetworkStorage
     _ -> fail $ "Unknown storage type: " ++ Text.unpack t
 
+-- | CPU types available.
 data CPUType = SharedCPU | DedicatedCPU deriving (Eq, Show)
 
 instance FromJSON CPUType where
@@ -1038,6 +1098,7 @@ instance FromJSON CPUType where
 -- | Server type identifier.
 newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
+-- | Server characteristics.
 data ServerType = ServerType
   { serverArchitecture :: Architecture
   , serverCores :: Int
