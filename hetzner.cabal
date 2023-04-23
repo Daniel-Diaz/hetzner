@@ -8,7 +8,8 @@ build-type: Simple
 author: Daniel Casanueva (daniel.casanueva `at` proton.me)
 maintainer: Daniel Casanueva (daniel.casanueva `at` proton.me)
 bug-reports: https://github.com/Daniel-Diaz/hetzner/issues
-license: license
+license: MIT
+license-file: license
 
 library
   hs-source-dirs: src
