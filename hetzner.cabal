@@ -1,7 +1,7 @@
 name: hetzner
 category: Cloud
 synopsis: Hetzner Cloud client library.
-description: Hetzner Cloud client library. Check the readme for more details.
+description: Hetzner Cloud client library. Check the readme and documentation for more details.
 version: 0.1.0.0
 cabal-version: >= 1.10
 build-type: Simple
