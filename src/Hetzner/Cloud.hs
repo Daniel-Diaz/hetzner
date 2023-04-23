@@ -61,8 +61,13 @@ module Hetzner.Cloud
   , ServerStatus (..)
   , ServerID (..)
   , Server (..)
+  , NewServer (..)
+  , defaultNewServer
+  , CreatedServer (..)
   , getServers
   , getServer
+  , createServer
+  , deleteServer
     -- ** Server types
   , Architecture (..)
   , StorageType (..)
@@ -607,7 +612,7 @@ getAction token (ActionID i) = withoutKey @"action" <$>
 ----------------------------------------------------------------------------------------------------
 
 -- | Datacenter identifier.
-newtype DatacenterID = DatacenterID Int deriving (Eq, Ord, Show, FromJSON)
+newtype DatacenterID = DatacenterID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
 data DatacenterServers = DatacenterServers
   { availableServers :: [ServerTypeID]
@@ -663,7 +668,7 @@ getDatacenter token (DatacenterID i) = withoutKey @"datacenter" <$>
 ----------------------------------------------------------------------------------------------------
 
 -- | Firewall identifier.
-newtype FirewallID = FirewallID Int deriving (Eq, Ord, Show, FromJSON)
+newtype FirewallID = FirewallID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
 ----------------------------------------------------------------------------------------------------
 -- Floating IPs
@@ -676,7 +681,7 @@ newtype FloatingIPID = FloatingIPID Int deriving (Eq, Ord, Show, FromJSON)
 ----------------------------------------------------------------------------------------------------
 
 -- | Image identifier.
-newtype ImageID = ImageID Int deriving (Eq, Ord, Show, FromJSON)
+newtype ImageID = ImageID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
 -- | Flavor of operative system.
 data OSFlavor = Ubuntu | CentOS | Debian | Fedora | Rocky | Alma | UnknownOS deriving Show
@@ -763,7 +768,7 @@ instance FromJSON City where
     _ -> fail $ "Unknown city: " ++ Text.unpack t
 
 -- | Location identifier.
-newtype LocationID = LocationID Int deriving (Eq, Ord, Show, FromJSON)
+newtype LocationID = LocationID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
 data Location = Location
   { locationCity :: City
@@ -901,6 +906,86 @@ instance FromJSON Server where
     <*> o .: "server_type"
     <*> o .: "status"
 
+-- | Server creation configuration.
+data NewServer = NewServer
+  { -- | Automount attached volumes.
+    newServerAutomount :: Bool
+  , newServerLocation :: Maybe (Either DatacenterID LocationID)
+  , newServerFirewalls :: [FirewallID]
+  , newServerImage :: ImageID
+  , newServerLabels :: [Label]
+    -- | Name of the server. Must be unique per project and a valid
+    --   hostname as per RFC 1123.
+  , newServerName :: Text
+  , newServerEnableIPv4 :: Bool
+  , newServerEnableIPv6 :: Bool
+  , newServerType :: ServerTypeID
+  , newServerSSHKeys :: [SSHKeyID]
+    -- | Whether to start the server after creation.
+  , newServerStart :: Bool
+    -- | Volumes to attach to the server after creation.
+  , newServerVolumes :: [VolumeID]
+    } deriving Show
+
+instance ToJSON NewServer where
+  toJSON nserver = JSON.object $ mconcat
+    [ pure $ "automount" .= (newServerAutomount nserver && not (null $ newServerVolumes nserver))
+    , maybe mempty (pure . either ("datacenter".=) ("location".=)) $ newServerLocation nserver
+    , pure $ "firewalls" .= newServerFirewalls nserver
+    , pure $ "image" .= newServerImage nserver
+    , pure $ "labels" .= toLabelMap (newServerLabels nserver)
+    , pure $ "name" .= newServerName nserver
+    , pure $ "public_net" .= JSON.object
+        [ "enable_ipv4" .= newServerEnableIPv4 nserver
+        , "enable_ipv6" .= newServerEnableIPv6 nserver
+          ]
+    , pure $ "server_type" .= newServerType nserver
+    , pure $ "ssh_keys" .= newServerSSHKeys nserver
+    , pure $ "start_after_create" .= newServerStart nserver
+    , pure $ "volumes" .= newServerVolumes nserver
+      ]
+
+-- | Default server configuration that can be used as a starting point
+--   for a custom server configuration.
+--
+--   Note that by default no SSH key is installed, which means you'll need the
+--   password in the response in order to access the server (you will also receive an
+--   e-mail with the password).
+--
+defaultNewServer
+  :: Text -- ^ Server name.
+  -> NewServer
+defaultNewServer name = NewServer
+  { newServerAutomount = True
+  , newServerLocation = Nothing
+  , newServerFirewalls = []
+  , newServerImage = ImageID 67794396
+  , newServerLabels = []
+  , newServerName = name
+  , newServerEnableIPv4 = True
+  , newServerEnableIPv6 = True
+  , newServerType = ServerTypeID 1
+  , newServerSSHKeys = []
+  , newServerStart = True
+  , newServerVolumes = []
+    }
+
+-- | A server that was just created with 'createServer'.
+data CreatedServer = CreatedServer
+  { createdServerAction :: Action
+  , createdServerNextActions :: [Action]
+    -- | Root password returned when no SSH keys are provided.
+  , createdServerPassword :: Maybe Text
+  , createdServer :: Server
+    } deriving Show
+
+instance FromJSON CreatedServer where
+  parseJSON = JSON.withObject "CreatedServer" $ \o -> CreatedServer
+    <$> o .: "action"
+    <*> o .: "next_actions"
+    <*> o .: "root_password"
+    <*> o .: "server"
+
 -- | Get all servers.
 getServers :: Token -> Maybe Int -> IO (WithMeta "servers" [Server])
 getServers = cloudQuery "GET" "/servers" noBody
@@ -909,6 +994,16 @@ getServers = cloudQuery "GET" "/servers" noBody
 getServer :: Token -> ServerID -> IO Server
 getServer token (ServerID i) = withoutKey @"server" <$>
   cloudQuery "GET" ("/servers/" <> fromString (show i)) noBody token Nothing
+
+-- | Create a new server.
+createServer :: Token -> NewServer -> IO CreatedServer
+createServer token nserver =
+  cloudQuery "POST" "/servers" (Just nserver) token Nothing
+
+-- | Delete a server.
+deleteServer :: Token -> ServerID -> IO Action
+deleteServer token (ServerID i) = withoutKey @"action" <$>
+  cloudQuery "DELETE" ("/servers/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Server Types
@@ -941,7 +1036,7 @@ instance FromJSON CPUType where
     _ -> fail $ "Unknown CPU type: " ++ Text.unpack t
 
 -- | Server type identifier.
-newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON)
+newtype ServerTypeID = ServerTypeID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
 data ServerType = ServerType
   { serverArchitecture :: Architecture
@@ -983,7 +1078,7 @@ getServerTypes token = withoutKey @"server_types" <$>
 ----------------------------------------------------------------------------------------------------
 
 -- | SSH key identifier.
-newtype SSHKeyID = SSHKeyID Int deriving (Eq, Ord, Show, FromJSON)
+newtype SSHKeyID = SSHKeyID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
 -- | SSH key information.
 data SSHKey = SSHKey
@@ -1047,3 +1142,10 @@ updateSSHKey token (SSHKeyID i) name labels =
         , "name" .= name
           ]
   in  cloudQuery "PUT" ("/ssh_keys/" <> fromString (show i)) (Just body) token Nothing
+
+----------------------------------------------------------------------------------------------------
+-- Volumes
+----------------------------------------------------------------------------------------------------
+
+-- | Volume identifier.
+newtype VolumeID = VolumeID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
