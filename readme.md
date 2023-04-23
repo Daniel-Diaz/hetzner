@@ -4,7 +4,7 @@
 
 ## Description
 
-Client interface for the Hetzner Cloud API written in the Haskell programming language.
+Client interface for the [Hetzner Cloud API](https://docs.hetzner.cloud/) written in the Haskell programming language.
 
 ## Status
 
