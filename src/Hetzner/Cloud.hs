@@ -483,10 +483,12 @@ cloudQuery method path mbody (Token token) mpage = do
           $ HTTP.defaultRequest
   resp <- HTTP.httpBS req
   let body = HTTP.getResponseBody resp
-  case div (HTTP.getResponseStatusCode resp) 100 of
-    2 -> case JSON.eitherDecodeStrict body of
-           Left err -> throwIO $ JSONError resp err
-           Right x -> pure x
+  case divMod (HTTP.getResponseStatusCode resp) 100 of
+    (2,m) ->
+      let body' = if m == 4 then "{}" else body
+      in  case JSON.eitherDecodeStrict body' of
+            Left err -> throwIO $ JSONError resp err
+            Right x -> pure x
     _ -> case JSON.eitherDecodeStrict body of
            Left err -> throwIO $ JSONError resp err
            Right x -> throwIO $ CloudError $ withoutKey @"error" x
@@ -526,7 +528,7 @@ instance Functor (WithKey key) where
   fmap f (WithKey x) = WithKey (f x)
 
 instance Foldable (WithKey key) where
-  foldMap f (WithKey x) = f x
+  foldMap f = f . withoutKey
 
 instance (KnownSymbol key, FromJSON a) => FromJSON (WithKey key a) where
   parseJSON =
