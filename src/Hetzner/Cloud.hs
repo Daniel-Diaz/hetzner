@@ -1230,8 +1230,8 @@ updateSSHKey
   -> SSHKeyID
   -> Text -- ^ New name for the key.
   -> [Label] -- ^ New labels for the key.
-  -> IO ()
-updateSSHKey token (SSHKeyID i) name labels =
+  -> IO SSHKey -- ^ Updated SSH key.
+updateSSHKey token (SSHKeyID i) name labels = withoutKey @"ssh_key" <$>
   let body = JSON.object
         [ "labels" .= toLabelMap labels
         , "name" .= name
@@ -1365,8 +1365,8 @@ updateVolume
   -> VolumeID
   -> Text -- ^ New name for the volume.
   -> [Label] -- ^ New labels for the volume.
-  -> IO ()
-updateVolume token (VolumeID i) name labels =
+  -> IO Volume -- ^ Updated volume.
+updateVolume token (VolumeID i) name labels = withoutKey @"volume" <$>
   let body = JSON.object
         [ "labels" .= toLabelMap labels
         , "name" .= name
