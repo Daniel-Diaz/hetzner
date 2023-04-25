@@ -612,6 +612,8 @@ newtype ActionID = ActionID Int deriving (Eq, Ord, Show, FromJSON)
 data ResourceID =
     -- | Server ID.
     ResourceServerID ServerID
+    -- | Volume ID.
+  | ResourceVolumeID VolumeID
     deriving Show
 
 instance FromJSON ResourceID where
@@ -619,6 +621,7 @@ instance FromJSON ResourceID where
     t <- o .: "type"
     case t :: Text of
       "server" -> ResourceServerID <$> o .: "id"
+      "volume" -> ResourceVolumeID <$> o .: "id"
       _ -> fail $ "Unknown resource type: " ++ Text.unpack t
 
 -- | Action.
@@ -1307,7 +1310,7 @@ data NewVolume = NewVolume
     --   directly attach the volume to a server.
   , newVolumeLocation :: Either LocationID AttachToServer
   , newVolumeName :: Text
-    -- | Size of the volume in GB.
+    -- | Size of the volume in GB. It must be at least 10.
   , newVolumeSize :: Int
     }
 
