@@ -533,7 +533,7 @@ instance Foldable (WithKey key) where
 instance (KnownSymbol key, FromJSON a) => FromJSON (WithKey key a) where
   parseJSON =
     let key = symbolVal (Proxy @key)
-    in  JSON.withObject ("WithKey " ++ key) $ \o ->
+    in  JSON.withObject ("WithKey:" ++ key) $ \o ->
           WithKey <$> o .: fromString key
 
 -- | A value together with response metadata.
