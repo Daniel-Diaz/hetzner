@@ -108,6 +108,17 @@ module Hetzner.Cloud
   , updateSSHKey
     -- ** Volumes
   , VolumeID (..)
+  , VolumeFormat (..)
+  , VolumeStatus (..)
+  , Volume (..)
+  , AttachToServer (..)
+  , NewVolume (..)
+  , CreatedVolume (..)
+  , getVolumes
+  , getVolume
+  , createVolume
+  , deleteVolume
+  , updateVolume
     -- * Exceptions
   , Error (..)
   , CloudException (..)
@@ -170,6 +181,7 @@ import Data.Aeson
   , FromJSONKey, ToJSONKey
     )
 import Data.Aeson qualified as JSON
+import Data.Aeson.Types qualified as JSON
 import Data.Aeson.Key qualified as JSONKey
 import Data.Aeson.Encoding qualified as JSONEncoding
 -- yaml
@@ -1227,3 +1239,131 @@ updateSSHKey token (SSHKeyID i) name labels =
 
 -- | Volume identifier.
 newtype VolumeID = VolumeID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
+
+-- | Volume format.
+data VolumeFormat = EXT4 | XFS deriving (Eq, Show)
+
+instance FromJSON VolumeFormat where
+  parseJSON = JSON.withText "VolumeFormat" $ \t -> case t of
+    "ext4" -> pure EXT4
+    "xfs" -> pure XFS
+    _ -> fail $ "Invalid volume format: " ++ Text.unpack t
+
+instance ToJSON VolumeFormat where
+  toJSON EXT4 = JSON.String "ext4"
+  toJSON XFS = JSON.String "xfs"
+
+-- | Volume status.
+data VolumeStatus = VolumeCreating | VolumeAvailable deriving (Eq, Show)
+
+instance FromJSON VolumeStatus where
+  parseJSON = JSON.withText "VolumeStatus" $ \t -> case t of
+    "creating" -> pure VolumeCreating
+    "available" -> pure VolumeAvailable
+    _ -> fail $ "Invalid volume status: " ++ Text.unpack t
+
+-- | A volume that can be attached to a server.
+data Volume = Volume
+  { volumeCreated :: ZonedTime
+    -- | Volume format. It returns 'Nothing' if the volume hasn't been formatted yet.
+  , volumeFormat :: Maybe VolumeFormat
+  , volumeID :: VolumeID
+  , volumeLabels :: LabelMap
+    -- | Device path on the file system for the volume.
+  , volumePath :: FilePath
+  , volumeLocation :: Location
+  , volumeName :: Text
+    -- | ID of the server the volume is attached to, if any.
+  , volumeServer :: Maybe ServerID
+    -- | Size of the volume in GB.
+  , volumeSize :: Int
+  , volumeStatus :: VolumeStatus
+    } deriving Show
+
+instance FromJSON Volume where
+  parseJSON = JSON.withObject "Volume" $ \o -> Volume
+    <$> o .: "created"
+    <*> o .: "format"
+    <*> o .: "id"
+    <*> o .: "labels"
+    <*> o .: "linux_device"
+    <*> o .: "location"
+    <*> o .: "name"
+    <*> o .: "server"
+    <*> o .: "size"
+    <*> o .: "status"
+
+-- | Attach a volume to a server. The boolean parameter
+--   indicates whether the volume will be auto-mounted.
+data AttachToServer = AttachToServer ServerID Bool
+
+-- | Volume creation configuration to be used with 'createVolume'.
+data NewVolume = NewVolume
+  { -- | If specified, volume will be formatted according
+    --   to the given format.
+    newVolumeFormat :: Maybe VolumeFormat
+  , newVolumeLabels :: [Label]
+    -- | You can either create a volume in a location or
+    --   directly attach the volume to a server.
+  , newVolumeLocation :: Either LocationID AttachToServer
+  , newVolumeName :: Text
+    -- | Size of the volume in GB.
+  , newVolumeSize :: Int
+    }
+
+instance ToJSON NewVolume where
+  toJSON nvolume = JSON.object $ mconcat
+    [ maybe mempty (pure . ("format".=)) $ newVolumeFormat nvolume
+    , pure $ "labels" .= toLabelMap (newVolumeLabels nvolume)
+    , let f :: AttachToServer -> [JSON.Pair]
+          f (AttachToServer i b) = [ "server" .= i, "automount" .= b ]
+      in  either (pure . ("location".=)) f $ newVolumeLocation nvolume
+    , pure $ "name" .= newVolumeName nvolume
+    , pure $ "size" .= newVolumeSize nvolume
+      ]
+
+-- | A volume created with 'createVolume'.
+data CreatedVolume = CreatedVolume
+  { createdVolumeAction :: Action
+  , createdVolumeNextActions :: [Action]
+  , createdVolume :: Volume
+    } deriving Show
+
+instance FromJSON CreatedVolume where
+  parseJSON = JSON.withObject "CreatedVolume" $ \o -> CreatedVolume
+    <$> o .: "action"
+    <*> o .: "next_actions"
+    <*> o .: "volume"
+
+-- | Get volumes.
+getVolumes :: Token -> Maybe Int -> IO (WithMeta "volumes" [Volume])
+getVolumes = cloudQuery "GET" "/volumes" noBody
+
+-- | Get a single volume.
+getVolume :: Token -> VolumeID -> IO Volume
+getVolume token (VolumeID i) = withoutKey @"volume" <$>
+  cloudQuery "GET" ("/volumes/" <> fromString (show i)) noBody token Nothing
+
+-- | Create a new volume.
+createVolume :: Token -> NewVolume -> IO CreatedVolume
+createVolume token nvolume =
+  cloudQuery "POST" "/volumes" (Just nvolume) token Nothing
+
+-- | Delete a volume.
+deleteVolume :: Token -> VolumeID -> IO ()
+deleteVolume token (VolumeID i) =
+  cloudQuery "DELETE" ("/volumes/" <> fromString (show i)) noBody token Nothing
+
+-- | Update name and labels of a volume.
+updateVolume
+  :: Token
+  -> VolumeID
+  -> Text -- ^ New name for the volume.
+  -> [Label] -- ^ New labels for the volume.
+  -> IO ()
+updateVolume token (VolumeID i) name labels =
+  let body = JSON.object
+        [ "labels" .= toLabelMap labels
+        , "name" .= name
+          ]
+  in  cloudQuery "PUT" ("/volumes/" <> fromString (show i)) (Just body) token Nothing
