@@ -37,6 +37,7 @@
 module Hetzner.Cloud
   ( -- * Tokens
     Token (..)
+  , getTokenFromEnv
     -- * Server metadata
   , Metadata (..)
   , getMetadata
@@ -159,13 +160,14 @@ import Control.Exception (Exception, throwIO)
 import Control.Concurrent (threadDelay)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
-import Data.String (fromString)
+import Data.String (IsString, fromString)
 import GHC.Fingerprint (Fingerprint (..))
 import Data.Void
 import Control.Applicative (liftA2)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (forM_)
 import Data.Maybe (isNothing, fromMaybe)
+import System.Environment qualified as System
 -- ip
 import Net.IPv4 (IPv4)
 import Net.IPv6 (IPv6, IPv6Range)
@@ -209,6 +211,13 @@ import Data.Conduit qualified as Conduit
 --
 --   You can obtain one through the [Hetzner Cloud Console](https://console.hetzner.cloud).
 newtype Token = Token ByteString
+
+instance IsString Token where
+  fromString = Token . fromString
+
+-- | Lookup 'Token' from the environment variable @HETZNER_API_TOKEN@.
+getTokenFromEnv :: IO (Maybe Token)
+getTokenFromEnv = fmap fromString <$> System.lookupEnv "HETZNER_API_TOKEN"
 
 -- | An error returned by Hetzner.
 data Error = Error
