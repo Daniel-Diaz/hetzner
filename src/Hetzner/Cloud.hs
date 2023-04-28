@@ -210,7 +210,7 @@ import Data.Conduit qualified as Conduit
 --   will have as scope the project where the token was made.
 --
 --   You can obtain one through the [Hetzner Cloud Console](https://console.hetzner.cloud).
-newtype Token = Token ByteString
+newtype Token = Token ByteString deriving (Show, Eq, Ord)
 
 instance IsString Token where
   fromString = Token . fromString
