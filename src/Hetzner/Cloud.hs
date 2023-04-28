@@ -916,8 +916,11 @@ getLocation token (LocationID i) = withoutKey @"location" <$>
 -- Networks
 ----------------------------------------------------------------------------------------------------
 
+-- | Network identifier.
 newtype NetworkID = NetworkID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
+-- | A route that sends all packets for a given destination to
+--   a given gateway.
 data Route = Route
   { routeDestination :: IPv4Range
   , routeGateway :: IPv4
@@ -950,6 +953,7 @@ instance ToJSON SubnetType where
     SubnetServer -> "server"
     SubnetVSwitch -> "vswitch"
 
+-- | Subnets divide the IP range of a parent 'Network'.
 data Subnet = Subnet
   { subnetGateway :: IPv4
   , subnetIPRange :: IPv4Range
@@ -972,6 +976,7 @@ instance ToJSON Subnet where
     , "type" .= subnetType subnet
       ]
 
+-- | A private network.
 data Network = Network
   { networkCreated :: ZonedTime
   , networkID :: NetworkID
