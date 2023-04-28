@@ -12,4 +12,4 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - run: ./build
-    - run: git checkout main && git merge dev
+    - run: git checkout main && git rebase dev
