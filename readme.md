@@ -1,6 +1,8 @@
 # Hetzner Cloud Haskell Library
 
 [![Hackage](https://img.shields.io/hackage/v/hetzner?style=for-the-badge)](https://hackage.haskell.org/package/hetzner)
+[![Stackage LTS](http://stackage.org/package/hetzner/badge/lts)](http://stackage.org/lts/package/hetzner)
+[![Stackage Nightly](http://stackage.org/package/hetzner/badge/nightly)](http://stackage.org/nightly/package/hetzner)
 
 ## Description
 
