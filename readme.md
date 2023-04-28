@@ -1,5 +1,9 @@
 # Hetzner Cloud Haskell Library
 
+![Build Status](https://img.shields.io/github/actions/workflow/status/Daniel-Diaz/hetzner/build.yml?branch=main&style=for-the-badge)
+
+## Distributions
+
 [![Hackage](https://img.shields.io/hackage/v/hetzner?style=for-the-badge)](https://hackage.haskell.org/package/hetzner)
 [![Stackage LTS](http://stackage.org/package/hetzner/badge/lts)](http://stackage.org/lts/package/hetzner)
 [![Stackage Nightly](http://stackage.org/package/hetzner/badge/nightly)](http://stackage.org/nightly/package/hetzner)
