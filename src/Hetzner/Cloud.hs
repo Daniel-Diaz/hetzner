@@ -1189,6 +1189,8 @@ data NewServer = NewServer
     -- | Name of the server. Must be unique per project and a valid
     --   hostname as per RFC 1123.
   , newServerName :: Text
+    -- | List of networks the server will be attached to.
+  , newServerNetworks :: [NetworkID]
   , newServerEnableIPv4 :: Bool
   , newServerEnableIPv6 :: Bool
   , newServerType :: ServerTypeID
@@ -1207,6 +1209,7 @@ instance ToJSON NewServer where
     , pure $ "image" .= newServerImage nserver
     , pure $ "labels" .= toLabelMap (newServerLabels nserver)
     , pure $ "name" .= newServerName nserver
+    , pure $ "networks" .= newServerNetworks nserver
     , pure $ "public_net" .= JSON.object
         [ "enable_ipv4" .= newServerEnableIPv4 nserver
         , "enable_ipv6" .= newServerEnableIPv6 nserver
@@ -1234,6 +1237,7 @@ defaultNewServer name = NewServer
   , newServerImage = ImageID 67794396
   , newServerLabels = []
   , newServerName = name
+  , newServerNetworks = []
   , newServerEnableIPv4 = True
   , newServerEnableIPv6 = True
   , newServerType = ServerTypeID 1
