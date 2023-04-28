@@ -72,12 +72,24 @@ module Hetzner.Cloud
   , Image (..)
   , getImages
   , getImage
+    -- ** Load Balancers
+  , LoadBalancerID (..)
     -- ** Locations
   , City (..)
   , LocationID (..)
   , Location (..)
   , getLocations
   , getLocation
+    -- ** Networks
+  , NetworkID (..)
+  , Network (..)
+  , NewNetwork (..)
+  , defaultNewNetwork
+  , getNetworks
+  , getNetwork
+  , createNetwork
+  , deleteNetwork
+  , updateNetwork
     -- ** Pricing
   , Price (..)
   , PriceInLocation (..)
@@ -169,7 +181,7 @@ import Data.Foldable (forM_)
 import Data.Maybe (isNothing, fromMaybe)
 import System.Environment qualified as System
 -- ip
-import Net.IPv4 (IPv4)
+import Net.IPv4 (IPv4, IPv4Range)
 import Net.IPv6 (IPv6, IPv6Range)
 -- bytestring
 import Data.ByteString (ByteString)
@@ -837,6 +849,12 @@ getImage token (ImageID i) = withoutKey @"image" <$>
   cloudQuery "GET" ("/images/" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
+-- Load Balancers
+----------------------------------------------------------------------------------------------------
+
+newtype LoadBalancerID = LoadBalancerID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
+
+----------------------------------------------------------------------------------------------------
 -- Locations
 ----------------------------------------------------------------------------------------------------
 
@@ -893,6 +911,157 @@ getLocations token = withoutKey @"locations" <$>
 getLocation :: Token -> LocationID -> IO Location
 getLocation token (LocationID i) = withoutKey @"location" <$>
   cloudQuery "GET" ("/locations/" <> fromString (show i)) noBody token Nothing
+
+----------------------------------------------------------------------------------------------------
+-- Networks
+----------------------------------------------------------------------------------------------------
+
+newtype NetworkID = NetworkID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
+
+data Route = Route
+  { routeDestination :: IPv4Range
+  , routeGateway :: IPv4
+    } deriving Show
+
+instance FromJSON Route where
+  parseJSON = JSON.withObject "Route" $ \o -> Route
+    <$> o .: "destination"
+    <*> o .: "gateway"
+
+instance ToJSON Route where
+  toJSON route = JSON.object
+    [ "destination" .= routeDestination route
+    , "gateway" .= routeGateway route
+      ]
+
+-- | Types of subnetworks.
+data SubnetType = SubnetCloud | SubnetServer | SubnetVSwitch deriving (Eq, Show)
+
+instance FromJSON SubnetType where
+  parseJSON = JSON.withText "SubnetType" $ \t -> case t of
+    "cloud" -> pure SubnetCloud
+    "server" -> pure SubnetServer
+    "vswitch" -> pure SubnetVSwitch
+    _ -> fail $ "Invalid subnet type: " ++ Text.unpack t
+
+instance ToJSON SubnetType where
+  toJSON t = case t of
+    SubnetCloud -> "cloud"
+    SubnetServer -> "server"
+    SubnetVSwitch -> "vswitch"
+
+data Subnet = Subnet
+  { subnetGateway :: IPv4
+  , subnetIPRange :: IPv4Range
+  , subnetRegion :: Region
+  , subnetType :: SubnetType
+    } deriving Show
+
+instance FromJSON Subnet where
+  parseJSON = JSON.withObject "Subnet" $ \o -> Subnet
+    <$> o .: "gateway"
+    <*> o .: "ip_range"
+    <*> o .: "network_zone"
+    <*> o .: "type"
+
+instance ToJSON Subnet where
+  toJSON subnet = JSON.object
+    [ "gateway" .= subnetGateway subnet
+    , "ip_range" .= subnetIPRange subnet
+    , "network_zone" .= subnetRegion subnet
+    , "type" .= subnetType subnet
+      ]
+
+data Network = Network
+  { networkCreated :: ZonedTime
+  , networkID :: NetworkID
+  , networkIPRange :: IPv4Range
+  , networkLabels :: LabelMap
+  , networkLoadBalancers :: [LoadBalancerID]
+  , networkName :: Text
+  , networkRoutes :: [Route]
+  , networkServers :: [ServerID]
+  , networkSubnets :: [Subnet]
+    } deriving Show
+
+instance FromJSON Network where
+  parseJSON = JSON.withObject "Network" $ \o -> Network
+    <$> o .: "created"
+    <*> o .: "id"
+    <*> o .: "ip_range"
+    <*> o .: "labels"
+    <*> o .: "load_balancers"
+    <*> o .: "name"
+    <*> o .: "routes"
+    <*> o .: "servers"
+    <*> o .: "subnets"
+
+-- | Network creation configuration to be used with 'createNetwork'.
+data NewNetwork = NewNetwork
+  { newNetworkIPRange :: IPv4Range
+  , newNetworkLabels :: [Label]
+  , newNetworkName :: Text
+  , newNetworkRoutes :: [Route]
+  , newNetworkSubnets :: [Subnet]
+    }
+
+instance ToJSON NewNetwork where
+  toJSON nnetwork = JSON.object
+    [ "ip_range" .= newNetworkIPRange nnetwork
+    , "labels" .= toLabelMap (newNetworkLabels nnetwork)
+    , "name" .= newNetworkName nnetwork
+    , "routes" .= newNetworkRoutes nnetwork
+    , "subnets" .= newNetworkSubnets nnetwork
+      ]
+
+-- | Default network configuration for new networks.
+defaultNewNetwork
+  :: Text -- ^ Network name.
+  -> IPv4Range -- ^ IP range of the network.
+  -> NewNetwork
+defaultNewNetwork name iprange = NewNetwork
+  { newNetworkIPRange = iprange
+  , newNetworkLabels = []
+  , newNetworkName = name
+  , newNetworkRoutes = []
+  , newNetworkSubnets = []
+    }
+
+-- | Get networks.
+getNetworks
+  :: Token
+  -> Maybe Int -- ^ Page.
+  -> IO (WithMeta "networks" [Network])
+getNetworks = cloudQuery "GET" "/networks" noBody
+
+-- | Get a single network.
+getNetwork :: Token -> NetworkID -> IO Network
+getNetwork token (NetworkID i) = withoutKey @"network" <$>
+  cloudQuery "GET" ("/networks/" <> fromString (show i)) noBody token Nothing
+
+-- | Create a new network.
+createNetwork :: Token -> NewNetwork -> IO Network
+createNetwork token new = withoutKey @"network" <$>
+  cloudQuery "POST" "/networks" (Just new) token Nothing
+
+-- | Delete a network.
+deleteNetwork :: Token -> NetworkID -> IO ()
+deleteNetwork token (NetworkID i) =
+  cloudQuery "DELETE" ("/networks/" <> fromString (show i)) noBody token Nothing
+
+-- | Update name and labels of a network.
+updateNetwork
+  :: Token
+  -> NetworkID -- ^ Network to update.
+  -> Text -- ^ New name for the network.
+  -> [Label] -- ^ New labels for the network.
+  -> IO Network
+updateNetwork token (NetworkID i) name labels = withoutKey @"network" <$>
+  let body = JSON.object
+        [ "labels" .= toLabelMap labels
+        , "name" .= name
+          ]
+  in  cloudQuery "PUT" ("/networks/" <> fromString (show i)) (Just body) token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Pricing
