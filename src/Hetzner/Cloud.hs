@@ -82,6 +82,9 @@ module Hetzner.Cloud
   , getLocation
     -- ** Networks
   , NetworkID (..)
+  , Route (..)
+  , SubnetType (..)
+  , Subnet (..)
   , Network (..)
   , NewNetwork (..)
   , defaultNewNetwork
@@ -852,6 +855,7 @@ getImage token (ImageID i) = withoutKey @"image" <$>
 -- Load Balancers
 ----------------------------------------------------------------------------------------------------
 
+-- | Load balancer identifier
 newtype LoadBalancerID = LoadBalancerID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
 
 ----------------------------------------------------------------------------------------------------
