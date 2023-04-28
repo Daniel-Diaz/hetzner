@@ -1,6 +1,6 @@
 # Hetzner Cloud Haskell Library
 
-![Build Status](https://img.shields.io/github/actions/workflow/status/Daniel-Diaz/hetzner/build.yml?branch=main&style=for-the-badge)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Daniel-Diaz/hetzner/build.yml?branch=main&style=for-the-badge)](https://github.com/Daniel-Diaz/hetzner/actions/workflows/build.yml)
 
 ## Distributions
 
