@@ -538,7 +538,13 @@ streamPages f = go Nothing
       -- Yield results from response
       forM_ resp $ mapM_ Conduit.yield
       -- Continue if not in last page
-      let next = nextPage $ pagination $ responseMeta resp
+      let pag = pagination $ responseMeta resp
+          cur = currentPage pag
+      let next = case lastPage pag of
+                   Just l -> if l == cur
+                                then Nothing
+                                else Just $ cur + 1
+                   _ -> nextPage pag
       if isNothing next then pure () else go next
 
 -- | Convenient function to turn streams into lists.
