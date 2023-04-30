@@ -7,6 +7,7 @@ module Hetzner.DNS (
   , getTokenFromEnv
     -- * Hetzner DNS
     -- ** Zones
+  , ZoneID (..)
   , ZoneStatus (..)
   , Zone (..)
   , getZones
