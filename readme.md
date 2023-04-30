@@ -12,7 +12,7 @@
 
 Client interface for the [Hetzner Cloud API](https://docs.hetzner.cloud)
 and the [Hetzner DNS API](https://dns.hetzner.com/api-docs),
-written in the Haskell programming language.
+written in the [Haskell](https://www.haskell.org) programming language.
 
 ## Status
 
