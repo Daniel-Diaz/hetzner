@@ -1,8 +1,8 @@
 name: hetzner
 category: Cloud
 synopsis: Hetzner Cloud and DNS library.
-description: Hetzner Cloud client library. Check the readme and documentation for more details.
-version: 0.1.2.0
+description: Hetzner Cloud and DNS library. Check the readme and documentation for more details.
+version: 0.2.0.0
 cabal-version: >= 1.10
 build-type: Simple
 author: Daniel Casanueva (daniel.casanueva `at` proton.me)

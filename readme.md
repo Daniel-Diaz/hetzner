@@ -1,4 +1,4 @@
-# Hetzner Cloud Haskell Library
+# Hetzner Haskell Library
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Daniel-Diaz/hetzner/build.yml?branch=main&style=for-the-badge)](https://github.com/Daniel-Diaz/hetzner/actions/workflows/build.yml)
 
@@ -10,7 +10,9 @@
 
 ## Description
 
-Client interface for the [Hetzner Cloud API](https://docs.hetzner.cloud/) written in the Haskell programming language.
+Client interface for the [Hetzner Cloud API](https://docs.hetzner.cloud)
+and the [Hetzner DNS API](https://dns.hetzner.com/api-docs),
+written in the Haskell programming language.
 
 ## Status
 

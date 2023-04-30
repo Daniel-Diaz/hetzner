@@ -1,3 +1,8 @@
+## 0.2.0.0
+* Allow to attach servers to networks on creation.
+* Modify `streamPages` to cover more cases.
+* Add support for DNS operations on zones and records.
+
 ## 0.1.2.0
 * New function: `getTokenFromEnv`. This function allows the user
   to obtain a token from the `HETZNER_API_TOKEN` environment variable.
