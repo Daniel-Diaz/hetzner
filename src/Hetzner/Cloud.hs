@@ -169,14 +169,13 @@ module Hetzner.Cloud
   , Pagination (..)
     ) where
 
-import Hetzner.Cloud.Fingerprint ()
+import Hetzner.Cloud.Fingerprint (Fingerprint)
 -- base
 import Control.Exception (Exception, throwIO)
 import Control.Concurrent (threadDelay)
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
 import Data.String (IsString, fromString)
-import GHC.Fingerprint (Fingerprint (..))
 import Data.Void
 import Control.Applicative (liftA2)
 import Control.Monad.IO.Class (MonadIO, liftIO)
