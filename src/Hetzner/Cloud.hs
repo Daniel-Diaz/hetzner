@@ -421,7 +421,7 @@ metadataQuery path =
 
 -- | Obtain metadata from running server.
 --   It doesn't need a 'Token' but must be
---   run from a serverin Hetzner Cloud.
+--   run from a server in Hetzner Cloud.
 getMetadata :: IO Metadata
 getMetadata = metadataQuery mempty
 
