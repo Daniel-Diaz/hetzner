@@ -420,6 +420,8 @@ metadataQuery path =
   in  HTTP.httpBS req >>= Yaml.decodeThrow . HTTP.getResponseBody
 
 -- | Obtain metadata from running server.
+--   It doesn't need a 'Token' but must be
+--   run from a serverin Hetzner Cloud.
 getMetadata :: IO Metadata
 getMetadata = metadataQuery mempty
 
