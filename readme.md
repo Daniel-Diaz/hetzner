@@ -2,7 +2,7 @@
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Daniel-Diaz/hetzner/build.yml?branch=main&style=for-the-badge)](https://github.com/Daniel-Diaz/hetzner/actions/workflows/build.yml)
 
-## Distributions
+## Distribution
 
 [![Hackage](https://img.shields.io/hackage/v/hetzner?style=for-the-badge)](https://hackage.haskell.org/package/hetzner)
 [![Stackage LTS](http://stackage.org/package/hetzner/badge/lts)](http://stackage.org/lts/package/hetzner)
