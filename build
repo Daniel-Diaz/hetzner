@@ -15,7 +15,7 @@ fi
 # Function to test the code using the resolver passed as argument.
 function build {
 echo -e "\e[92m>> Building using resolver $1...\e[0m"
-stack --resolver=$1 build
+stack --resolver=$1 test
 }
 
 # Run build command for all the resolvers we want to support.

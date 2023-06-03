@@ -19,6 +19,7 @@ library
     Hetzner.Cloud
     Hetzner.Cloud.Fingerprint
     Hetzner.DNS
+  ghc-options: -Wall -Wunused-packages
   default-extensions:
       ImportQualifiedPost
     , OverloadedStrings
@@ -27,9 +28,17 @@ library
     , ScopedTypeVariables
     , GeneralizedNewtypeDeriving
     , TypeApplications
-  ghc-options: -Wall -Wunused-packages
   build-depends:
       base >= 4.16 && < 4.18
     , text, aeson, containers, conduit
     , http-conduit, bytestring, yaml, time
     , country, ip, megaparsec, scientific
+
+test-suite hetzner-test
+  default-language: Haskell2010
+  hs-source-dirs: test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  ghc-options: -Wall -Wunused-packages
+  default-extensions: ImportQualifiedPost, OverloadedStrings
+  build-depends: base, hetzner
