@@ -1,4 +1,7 @@
 
+-- | If the environment variable @HETZNER_API_TOKEN@ isn't set, this test succeeds without
+--   doing anything. If it is set to a valid Hetzner token, this test will create and destroy
+--   resources in Hetzner Cloud, which carries some cost, albeit small.
 module Main (main) where
 
 import Hetzner.Cloud qualified as Hetzner

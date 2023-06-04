@@ -1,3 +1,8 @@
+## 0.2.1.0
+* Add support for primary IPs.
+* Add function to set reverse DNS for a primary IP.
+* Add test.
+
 ## 0.2.0.0
 * Allow to attach servers to networks on creation.
 * Modify `streamPages` to cover more cases.
