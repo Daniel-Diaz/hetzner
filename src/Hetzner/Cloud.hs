@@ -80,6 +80,11 @@ module Hetzner.Cloud
   , Location (..)
   , getLocations
   , getLocation
+    -- ** Primary IPs
+  , PrimaryIPID (..)
+  , PrimaryIP (..)
+  , getPrimaryIPs
+  , getPrimaryIP
     -- ** Networks
   , NetworkID (..)
   , Route (..)
@@ -922,6 +927,62 @@ getLocations token = withoutKey @"locations" <$>
 getLocation :: Token -> LocationID -> IO Location
 getLocation token (LocationID i) = withoutKey @"location" <$>
   cloudQuery "GET" ("/locations/" <> fromString (show i)) noBody token Nothing
+
+----------------------------------------------------------------------------------------------------
+-- Primary IPs
+----------------------------------------------------------------------------------------------------
+
+-- | Primary IP identifier.
+newtype PrimaryIPID = PrimaryIPID Int deriving (Eq, Ord, Show, FromJSON, ToJSON)
+
+-- | Primary IP.
+data PrimaryIP = PrimaryIP
+  { -- | Resource the primary IP is assigned to.
+    primaryIPAssignee :: ResourceID
+    -- | This primary IP is deleted when the resource it is assigned to is deleted.
+  , primaryIPAutoDelete :: Bool
+  , primaryIPIsBlocked :: Bool
+    -- | Point in time where the primary IP was created.
+  , primaryIPCreated :: ZonedTime
+  , primaryIPDatacenter :: Datacenter
+  , primaryIPID :: PrimaryIPID
+    -- | Primary IP together with reverse DNS information.
+  , primaryIP :: Either (PublicIPInfo Text IPv4) (PublicIPInfo [PublicIPInfo Text IPv6] IPv6Range)
+  , primaryIPLabels :: LabelMap
+  , primaryIPName :: Text
+    } deriving Show
+
+instance FromJSON PrimaryIP where
+  parseJSON = JSON.withObject "PrimaryIP" $ \o -> do
+    aid <- o .: "assignee_id" :: JSON.Parser Int
+    atype <- o .: "assignee_type" :: JSON.Parser Text
+    iptype <- o .: "type"
+    PrimaryIP
+      <$> JSON.parseJSON (JSON.object [ "id" .= aid, "type" .= atype ])
+      <*> o .: "auto_delete"
+      <*> o .: "blocked"
+      <*> o .: "created"
+      <*> o .: "datacenter"
+      <*> o .: "id"
+      <*> (case iptype :: Text of
+             "ipv4" -> Left <$> (o .: "dns_ptr" >>= JSON.parseJSON . head)
+             "ipv6" -> Right <$> JSON.parseJSON (JSON.Object o)
+             _ -> fail $ "Invalid ip type: " ++ Text.unpack iptype
+             )
+      <*> o .: "labels"
+      <*> o .: "name"
+
+-- | Get primary IPs.
+getPrimaryIPs
+  :: Token
+  -> Maybe Int -- ^ Page.
+  -> IO (WithMeta "primary_ips" [PrimaryIP])
+getPrimaryIPs = cloudQuery "GET" "/primary_ips" noBody
+
+-- | Get a single primary IP.
+getPrimaryIP :: Token -> PrimaryIPID -> IO PrimaryIP
+getPrimaryIP token i = withoutKey @"primary_ip" <$>
+  cloudQuery "GET" ("/primary_ips" <> fromString (show i)) noBody token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Networks
