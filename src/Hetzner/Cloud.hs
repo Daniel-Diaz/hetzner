@@ -85,6 +85,7 @@ module Hetzner.Cloud
   , PrimaryIP (..)
   , getPrimaryIPs
   , getPrimaryIP
+  , setReverseDNS
     -- ** Networks
   , NetworkID (..)
   , Route (..)
@@ -465,6 +466,18 @@ instance (FromJSON dnsptr, FromJSON ip) => FromJSON (PublicIPInfo dnsptr ip) whe
     <$> o .: "dns_ptr"
     <*> o .: "ip"
 
+instance (ToJSON dnsptr, ToJSON ip) => ToJSON (PublicIPInfo dnsptr ip) where
+  toJSON (PublicIPInfo dns ip) = JSON.object [ "dns_ptr" .= dns, "ip" .= ip ]
+
+instance Functor (PublicIPInfo dnsptr) where
+  fmap f (PublicIPInfo dns ip) = PublicIPInfo dns (f ip)
+
+instance Foldable (PublicIPInfo dnsptr) where
+  foldMap f (PublicIPInfo _ ip) = f ip
+
+instance Traversable (PublicIPInfo dnsptr) where
+  traverse f (PublicIPInfo dns ip) = PublicIPInfo dns <$> f ip
+
 -- | Public network information associated with a 'Server'.
 data PublicNetwork = PublicNetwork
   { publicNetworkFirewalls :: [FirewallStatus]
@@ -629,6 +642,7 @@ data ActionCommand =
   | ApplyFirewall
   | CreateVolume
   | AttachVolume
+  | ChangeDNSPtr
     deriving Show
 
 instance FromJSON ActionCommand where
@@ -641,6 +655,7 @@ instance FromJSON ActionCommand where
     "apply_firewall" -> pure ApplyFirewall
     "create_volume" -> pure CreateVolume
     "attach_volume" -> pure AttachVolume
+    "change_dns_ptr" -> pure ChangeDNSPtr
     _ -> fail $ "Unknown action command " ++ Text.unpack t
 
 -- | Action identifier.
@@ -652,6 +667,8 @@ data ResourceID =
     ResourceServerID ServerID
     -- | Volume ID.
   | ResourceVolumeID VolumeID
+    -- | Primary IP ID.
+  | ResourcePrimaryIPID PrimaryIPID
     deriving Show
 
 instance FromJSON ResourceID where
@@ -660,6 +677,7 @@ instance FromJSON ResourceID where
     case t :: Text of
       "server" -> ResourceServerID <$> o .: "id"
       "volume" -> ResourceVolumeID <$> o .: "id"
+      "primary_ip" -> ResourcePrimaryIPID <$> o .: "id"
       _ -> fail $ "Unknown resource type: " ++ Text.unpack t
 
 -- | Action.
@@ -981,8 +999,21 @@ getPrimaryIPs = cloudQuery "GET" "/primary_ips" noBody
 
 -- | Get a single primary IP.
 getPrimaryIP :: Token -> PrimaryIPID -> IO PrimaryIP
-getPrimaryIP token i = withoutKey @"primary_ip" <$>
+getPrimaryIP token (PrimaryIPID i) = withoutKey @"primary_ip" <$>
   cloudQuery "GET" ("/primary_ips" <> fromString (show i)) noBody token Nothing
+
+-- | Set reverse DNS for a primary IP.
+setReverseDNS
+  :: Token
+     -- | Primary IP to set reverse DNS for.
+  -> PrimaryIPID
+     -- | Reverse DNS settings.
+  -> PublicIPInfo Text (Either IPv4 IPv6)
+  -> IO Action
+setReverseDNS token (PrimaryIPID i) (PublicIPInfo dns ip) = withoutKey @"action" <$>
+  cloudQuery "POST" ("/primary_ips/" <> fromString (show i) <> "/actions/change_dns_ptr")
+    (Just $ either (JSON.toJSON . PublicIPInfo dns) (JSON.toJSON . PublicIPInfo dns) ip)
+    token Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Networks
