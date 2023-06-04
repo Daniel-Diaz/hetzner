@@ -1003,6 +1003,13 @@ getPrimaryIP token (PrimaryIPID i) = withoutKey @"primary_ip" <$>
   cloudQuery "GET" ("/primary_ips" <> fromString (show i)) noBody token Nothing
 
 -- | Set reverse DNS for a primary IP.
+--
+--   * If the primary IP corresponds to an IPv4, the reverse DNS setting's
+--     IP /must/ coincide with the primary IP's IPv4.
+--
+--   * If the primary IP corresponds to an IPv6, the reverse DNS setting's
+--     IP /must/ be within the primary IP's IPv6 range.
+--
 setReverseDNS
   :: Token
      -- | Primary IP to set reverse DNS for.
