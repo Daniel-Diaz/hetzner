@@ -1,3 +1,6 @@
+## 0.2.1.1
+* base-4.18 support.
+
 ## 0.2.1.0
 * Add support for primary IPs.
 * Add function to set reverse DNS for a primary IP.

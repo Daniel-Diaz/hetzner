@@ -9,7 +9,9 @@ module Hetzner.Cloud.Fingerprint (
 import GHC.Fingerprint (Fingerprint (..))
 import Data.Void
 import Data.Word
+#if !MIN_VERSION_base(4,18,0)
 import Control.Applicative (liftA2)
+#endif
 import Control.Monad (replicateM)
 import Data.Foldable (foldl')
 import Data.Bits (shiftL, (.|.))

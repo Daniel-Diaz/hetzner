@@ -183,7 +183,9 @@ import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import Data.Proxy
 import Data.String (IsString, fromString)
 import Data.Void
+#if !MIN_VERSION_base(4,18,0)
 import Control.Applicative (liftA2)
+#endif
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (forM_)
 import Data.Maybe (isNothing, fromMaybe)
