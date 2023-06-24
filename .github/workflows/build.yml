@@ -12,10 +12,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         snapshot: [lts-20, lts-21, nightly]
+      fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
-    - if: matrix.os == 'ubuntu-latest'
-      run: ./build ${{ matrix.snapshot }}
-    - if: matrix.os == 'windows-latest'
-      run: bash build ${{ matrix.snapshot }}
+    - run: bash build ${{ matrix.snapshot }}
