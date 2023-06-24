@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script is used to build the code against several sets of dependencies.
+# This script is used to build the code against a stackage snapshot.
 # We use stack for this.
 
 # This makes the script stop after the first error.
@@ -12,13 +12,5 @@ then
   stack init
 fi
 
-# Function to test the code using the resolver passed as argument.
-function build {
 echo -e "\e[92m>> Building using resolver $1...\e[0m"
 stack --resolver=$1 build
-}
-
-# Run build command for all the resolvers we want to support.
-build lts-20
-build lts-21
-build nightly
