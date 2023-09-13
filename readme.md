@@ -1,6 +1,8 @@
-# Hetzner Haskell Library
+_This repository now lives in GitLab:_
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/Daniel-Diaz/hetzner/build.yml?branch=main&style=for-the-badge)](https://github.com/Daniel-Diaz/hetzner/actions/workflows/build.yml)
+https://gitlab.com/daniel-casanueva/hetzner
+
+# Hetzner Haskell Library
 
 ## Distribution
 
